@@ -85,9 +85,17 @@ python tools\serve.py --open
 和桌面版完全一致：`WASD` 移动、`Shift` 奔跑、`Space` 跳跃、鼠标转视角、左键射击、
 `V` 切视角（奶龙模式）、`Tab` 锁鼠标、`ESC` 暂停。
 
-### 4. 自检（不启动游戏就能验的两件事）
+### 4. 自检（不启动游戏就能验的三件事）
 
-**a) 排行榜签名算法** —— 客户端那份 SHA-256/HMAC 是手写的。算错一个字节，成绩会被
+**a) Web 分支能不能编过** —— `#ifdef MAZE_WEB` 里的代码只有 emcc 才编，等跑到
+emcc 才发现拼错一个字母太亏。`tools/webstub/` 里放了一份假的 `emscripten.h`
+（`EM_ASM` / `EM_JS` / Fetch API 全做成空壳），用 MSVC 先把这些分支过一遍：
+
+```powershell
+cmake --build build\desktop --config Release --target web_syntax_check
+```
+
+**b) 排行榜签名算法** —— 客户端那份 SHA-256/HMAC 是手写的。算错一个字节，成绩会被
 服务端 403 拒收，而现象是"本地 `log.csv` 好好的、就是不上榜"，极难查。所以留了靶子：
 
 ```powershell
@@ -96,7 +104,7 @@ build\desktop\Release\selftest.exe > build\selftest_out.txt
 python tools\selftest\check.py build\selftest_out.txt
 ```
 
-**b) 后端验签链路** —— 起一个临时 sqlite 后端，拿 C++ 算出来的**真签名**去打它：
+**c) 后端验签链路** —— 起一个临时 sqlite 后端，拿 C++ 算出来的**真签名**去打它：
 
 ```powershell
 python tools\selftest\server_check.py

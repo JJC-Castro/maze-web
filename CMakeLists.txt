@@ -119,6 +119,23 @@ endif()
 #  探针：只依赖 raylib 的最小三角，用来单独验证 emcc 工具链
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
+#  Web 分支语法自检（纯桌面）：用 tools/webstub 里的假 emscripten 头，
+#  让 MSVC 把 #ifdef MAZE_WEB 里的代码也编一遍。等 emcc 才发现拼写错误太贵。
+#    cmake --build build\desktop --config Release --target web_syntax_check
+#  注意：这是个 OBJECT 库，只编不链，绝不能进可执行文件。
+# ---------------------------------------------------------------------------
+add_library(web_syntax_check OBJECT EXCLUDE_FROM_ALL
+    ${MAZE_SOURCES}
+    src/RL/RlBridge_web.cpp
+)
+target_compile_definitions(web_syntax_check PRIVATE MAZE_WEB=1)
+target_include_directories(web_syntax_check PRIVATE tools/webstub src third_party/raylib/src)
+if(MSVC)
+    # /FI：把 POSIX 垫片塞进来，MSVC 才有 localtime_r / ::mkdir(path, mode)
+    target_compile_options(web_syntax_check PRIVATE /utf-8 /FI${CMAKE_CURRENT_SOURCE_DIR}/tools/webstub/msvc_posix_shim.h)
+endif()
+
+# ---------------------------------------------------------------------------
 #  自检（纯桌面）：验自己手写的 SHA-256 / HMAC-SHA256 跟 Python hashlib 一致。
 #  排行榜签名全靠它，算错了成绩会被服务端 403 拒收，所以单独留个靶子。
 #    cmake --build build\desktop --config Release --target selftest
