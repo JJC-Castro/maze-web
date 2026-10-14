@@ -164,7 +164,7 @@ maze_web/
 │   └── wrangler.toml       部署配置
 └── tools/
     ├── gbk2utf8.py         桌面版 GBK 源码 → UTF-8（迁移第一步）
-    ├── apply_web_port.py   33 处平台补丁（带锚点断言，可重复跑）
+    ├── apply_web_port.py   35 处平台补丁（带锚点断言，可重复跑）
     ├── apply_web_hidpi.py   raylib Web 后端 HiDPI / 指针锁定补丁（7 处，见 3.8）
     ├── make_web_assets.py   资源瘦身：音频转 OGG + 摈掉 glb 内嵌死贴图（见 3.9）
     ├── apply_web_audio_ogg.py  src 里 26 处 .wav 引用 -> .ogg
@@ -371,6 +371,40 @@ Web 版改成读真实状态 `WebPlatform::CursorLocked()`（即 `document.point
 要把 `index.data` 挪到更快的 CDN，只要在 `shell.html` 里覆盖 `Module.locateFile`，
 让它对 index.data 返回别的地址即可 —— JS/wasm 仍走同源，不涉及 CORS。
 
+### 3.10 自写 shader 必须用 GLSL ES 1.00（地狱难度"视野限制消失"的真凶）
+
+`LightSource`（地狱 / 神圣 / 饥饿 / 肉鸽的视野限制）用了两个自写 shader，桌面版写的是
+`#version 330` 的 `in` / `out` / `texture()` / `finalColor`。这套东西在浏览器里**编不过** ——
+raylib 的 Web 后端编的是 `GRAPHICS_API_OPENGL_ES2`，shader 按 GLSL ES 1.00 编译，控制台报：
+
+```
+ERROR: 0:2: 'in' : storage qualifier supported in GLSL ES 3.00 and above only
+ERROR: 0:2: '' : No precision specified for (float)
+ERROR: 0:16: 'texture' : no matching overloaded function found
+```
+
+`LoadShaderFromMemory` 失败时返回 `id == 0`，`LightSource::IsReady()` 于是恒为 false，
+游戏很体面地回退成**完全不做视野限制** —— 表现就是"地狱难度后面几档的视线/光线变化没了"，
+不崩不报错，只在控制台留几行 warning，非常容易被当成"网页版就是没做这个功能"。
+
+修法（`apply_web_port.py` 里 LIGHTSRC 那两处补丁）：给 Web 一套等价写法，用 `#ifdef MAZE_WEB` 和桌面版隔开：
+
+| GLSL 330（桌面） | GLSL ES 1.00（Web） |
+|---|---|
+| `in` / `out`（顶点属性、varying） | `attribute` / `varying` |
+| `out vec4 finalColor;` | `gl_FragColor` |
+| `texture(s, uv)` | `texture2D(s, uv)` |
+| `#version 330` | 不写（ES 1.00 本来就是默认的 `100`） |
+
+三个坑：
+
+- ES 1.00 的片元着色器**必须自己声明 `precision`**，raylib 不会给用户 shader 加（"No precision specified" 就是它）。
+- varying 两端精度限定符要一致；`fragWorldPos` 这种世界坐标得用 `highp`，不然远处压黑的渐变会糊成一坨。
+- uniform 名字一个都不能改，`GetShaderLocation` 是按名字取的。
+
+验证办法（不用跑游戏）：把 `#ifdef MAZE_WEB` 里那 4 段 shader 抠出来，在一个真实 WebGL 上下文里
+`compileShader` + `linkProgram`，再看 uniform / attribute 位置是否都能取到 —— 全绿就说明 rlgl 那边没问题。
+
 ---
 
 ## 四、全网排行榜
@@ -517,7 +551,7 @@ python server/local_server.py --port 8787
 **Q：完全没有音效和 BGM？**
 Web 版音频查找函数原本拼的是 Windows 反斜杠（`assets\audio\...`），浏览器 MEMFS 只把 `/`
 当分隔符，于是 26 个音效全部"找不到"、footstep 更是整段禁用 —— 已在 `apply_web_port.py`
-里统一改成正斜杠（33 处补丁）。另外浏览器要求"先有用户手势才准出声"，进游戏点一下画面即可。
+里统一改成正斜杠（35 处补丁）。另外浏览器要求"先有用户手势才准出声"，进游戏点一下画面即可。
 
 **Q：首屏要等很久？**
 首屏基本就是在下 `index.data`，见 3.9（已从 17.3MB 瘦到 4.9MB）。想更快就把 index.data 挪到国内 CDN。

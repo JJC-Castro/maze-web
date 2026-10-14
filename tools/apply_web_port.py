@@ -474,6 +474,131 @@ PATCHES = [
           'return directory + "\\\\" + child;',
           'return directory + "/" + child;',
           'FootstepAudio.cpp: JoinPath 分隔符 \\ -> /'),
+    # ------------------------------------------------------------ LightSource
+    # LIGHTSRC：Web 后端是 GRAPHICS_API_OPENGL_ES2，shader 按 GLSL ES 1.00 编译，而 LightSource
+    # 里那套 #version 330 的 in/out/texture() 在浏览器里编不过（报
+    # "'in' : storage qualifier supported in GLSL ES 3.00 and above only"），
+    # IsReady() 因此恒为 false，表现就是「地狄难度没有视野限制」。
+    # 这里给 Web 一套等价写法：attribute / varying / texture2D / gl_FragColor，
+    # 且不写 #version（GLSL ES 1.00 本来就是默认值 100）。
+    # uniform 名字一个都不能改，GetShaderLocation 是按名字取的。
+    Patch('LightSource.cpp',
+          '''static const char* FOG_VS = R"(#version 330''',
+          '''// ---- Web 变体：GLSL ES 1.00（raylib Web 后端按 ES 1.00 编译 shader）----
+#ifdef MAZE_WEB
+static const char* FOG_VS = R"(
+attribute vec3 vertexPosition;
+attribute vec2 vertexTexCoord;
+attribute vec4 vertexColor;
+
+uniform mat4 mvp;
+
+varying highp vec3 fragWorldPos;
+varying mediump vec2 fragTexCoord;
+varying mediump vec4 fragColor;
+
+void main()
+{
+    fragWorldPos = vertexPosition;
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+)";
+
+static const char* FOG_FS = R"(
+precision highp float;
+
+varying highp vec3 fragWorldPos;
+varying mediump vec2 fragTexCoord;
+varying mediump vec4 fragColor;
+
+uniform sampler2D texture0;
+uniform vec3  lightPos;
+uniform float lightRadius;
+uniform float lightInner;
+uniform float lightDarkness;
+
+void main()
+{
+    vec4 texel = texture2D(texture0, fragTexCoord) * fragColor;
+    float d = distance(fragWorldPos, lightPos);
+    float t = smoothstep(lightRadius * lightInner, lightRadius, d);
+    texel.rgb = mix(texel.rgb, texel.rgb * 0.03, clamp(t * lightDarkness, 0.0, 1.0));
+    gl_FragColor = texel;
+}
+)";
+
+static const char* BLUR_VS = R"(
+attribute vec3 vertexPosition;
+attribute vec2 vertexTexCoord;
+attribute vec4 vertexColor;
+
+uniform mat4 mvp;
+
+varying mediump vec2 fragTexCoord;
+varying mediump vec4 fragColor;
+
+void main()
+{
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+)";
+
+static const char* BLUR_FS = R"(
+precision highp float;
+
+varying mediump vec2 fragTexCoord;
+varying mediump vec4 fragColor;
+
+uniform sampler2D texture0;
+uniform vec2  texSize;
+uniform float blurAmount;
+uniform float edgeDarkness;
+uniform float lightInner;
+
+void main()
+{
+    vec2 uv = fragTexCoord;
+    vec2 aspect = vec2(texSize.x / max(texSize.y, 1.0), 1.0);
+    vec2 p = (uv - vec2(0.5)) * aspect;
+    float r = clamp(length(p) / 0.5, 0.0, 1.0);
+    float t = smoothstep(lightInner, 1.0, r);
+
+    vec4 col = texture2D(texture0, uv);
+
+    if (t > 0.004 && blurAmount > 0.004)
+    {
+        vec2 dir = uv - vec2(0.5);
+        if (dot(dir, dir) < 1e-8) dir = vec2(0.0, 1.0);
+        dir = normalize(dir);
+
+        vec2 offset = dir * (t * blurAmount * 0.045);
+        vec4 sum = vec4(0.0);
+        for (int i = 0; i < 9; ++i)
+        {
+            float k = (float(i) / 8.0 - 0.5) * 2.0;
+            sum += texture2D(texture0, uv + offset * k);
+        }
+        col = mix(col, sum / 9.0, clamp(t * 1.3, 0.0, 1.0));
+    }
+
+    col.rgb *= mix(1.0, 1.0 - edgeDarkness, t);
+    gl_FragColor = vec4(col.rgb, 1.0);
+}
+)";
+#else
+// ---- 桌面版：GLSL 330（OpenGL 3.3）----
+static const char* FOG_VS = R"(#version 330''',
+          'LightSource.cpp: 给 Web 补 GLSL ES 1.00 版 shader'),
+    Patch('LightSource.cpp',
+          '''// 生命周期''',
+          '''#endif  // MAZE_WEB（GLSL 100 / 330 两套 shader）
+
+// 生命周期''',
+          'LightSource.cpp: 合上 #endif'),
 ]
 
 

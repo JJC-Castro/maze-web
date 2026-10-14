@@ -5,6 +5,113 @@
 // ============================================================
 // 3D 阶段：按"到玩家的世界距离"把远处压黑
 // （这里不使用 matModel：场景全部用世界坐标直接画，vertexPosition 就是世界坐标）
+// ---- Web 变体：GLSL ES 1.00（raylib Web 后端按 ES 1.00 编译 shader）----
+#ifdef MAZE_WEB
+static const char* FOG_VS = R"(
+attribute vec3 vertexPosition;
+attribute vec2 vertexTexCoord;
+attribute vec4 vertexColor;
+
+uniform mat4 mvp;
+
+varying highp vec3 fragWorldPos;
+varying mediump vec2 fragTexCoord;
+varying mediump vec4 fragColor;
+
+void main()
+{
+    fragWorldPos = vertexPosition;
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+)";
+
+static const char* FOG_FS = R"(
+precision highp float;
+
+varying highp vec3 fragWorldPos;
+varying mediump vec2 fragTexCoord;
+varying mediump vec4 fragColor;
+
+uniform sampler2D texture0;
+uniform vec3  lightPos;
+uniform float lightRadius;
+uniform float lightInner;
+uniform float lightDarkness;
+
+void main()
+{
+    vec4 texel = texture2D(texture0, fragTexCoord) * fragColor;
+    float d = distance(fragWorldPos, lightPos);
+    float t = smoothstep(lightRadius * lightInner, lightRadius, d);
+    texel.rgb = mix(texel.rgb, texel.rgb * 0.03, clamp(t * lightDarkness, 0.0, 1.0));
+    gl_FragColor = texel;
+}
+)";
+
+static const char* BLUR_VS = R"(
+attribute vec3 vertexPosition;
+attribute vec2 vertexTexCoord;
+attribute vec4 vertexColor;
+
+uniform mat4 mvp;
+
+varying mediump vec2 fragTexCoord;
+varying mediump vec4 fragColor;
+
+void main()
+{
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+)";
+
+static const char* BLUR_FS = R"(
+precision highp float;
+
+varying mediump vec2 fragTexCoord;
+varying mediump vec4 fragColor;
+
+uniform sampler2D texture0;
+uniform vec2  texSize;
+uniform float blurAmount;
+uniform float edgeDarkness;
+uniform float lightInner;
+
+void main()
+{
+    vec2 uv = fragTexCoord;
+    vec2 aspect = vec2(texSize.x / max(texSize.y, 1.0), 1.0);
+    vec2 p = (uv - vec2(0.5)) * aspect;
+    float r = clamp(length(p) / 0.5, 0.0, 1.0);
+    float t = smoothstep(lightInner, 1.0, r);
+
+    vec4 col = texture2D(texture0, uv);
+
+    if (t > 0.004 && blurAmount > 0.004)
+    {
+        vec2 dir = uv - vec2(0.5);
+        if (dot(dir, dir) < 1e-8) dir = vec2(0.0, 1.0);
+        dir = normalize(dir);
+
+        vec2 offset = dir * (t * blurAmount * 0.045);
+        vec4 sum = vec4(0.0);
+        for (int i = 0; i < 9; ++i)
+        {
+            float k = (float(i) / 8.0 - 0.5) * 2.0;
+            sum += texture2D(texture0, uv + offset * k);
+        }
+        col = mix(col, sum / 9.0, clamp(t * 1.3, 0.0, 1.0));
+    }
+
+    col.rgb *= mix(1.0, 1.0 - edgeDarkness, t);
+    gl_FragColor = vec4(col.rgb, 1.0);
+}
+)";
+#else
+// ---- 桌面版：GLSL 330（OpenGL 3.3）----
 static const char* FOG_VS = R"(#version 330
 in vec3 vertexPosition;
 in vec2 vertexTexCoord;
@@ -111,6 +218,8 @@ void main()
 )";
 
 // ============================================================
+#endif  // MAZE_WEB（GLSL 100 / 330 两套 shader）
+
 // 生命周期
 // ============================================================
 void LightSource::Init(int w, int h)
