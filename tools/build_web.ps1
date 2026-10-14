@@ -26,9 +26,13 @@ $ErrorActionPreference = 'Continue'
 $Root = Split-Path -Parent $PSScriptRoot
 
 function Find-Exe([string]$Name, [string[]]$Candidates) {
+    # 先找真家伙：PATH 里的 python / node 可能是 Windows 应用商店的占位符
+    # （%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe），碰它会直接报
+    # "Python was not found"，而且看起来特别莫名其妙。
     $c = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($c) { return $c.Source }
+    if ($c -and $c.Source -and $c.Source -notmatch 'WindowsApps') { return $c.Source }
     foreach ($p in $Candidates) { if (Test-Path $p) { return $p } }
+    if ($c) { return $c.Source }
     return $null
 }
 
