@@ -99,6 +99,10 @@ if(EMSCRIPTEN)
         "-sEXIT_RUNTIME=0"
         "-sASSERTIONS=0"
                 "-sGL_ENABLE_GET_PROC_ADDRESS=1"
+        # WebGL 版本：raylib for Web 编的是 GLES2 代码，WebGL1/2 上下文都能跑。
+        # 写死 1~2 让 Emscripten 按浏览器实际能力挑，别把只有 WebGL1 的机器挡在门外。
+        "-sMIN_WEBGL_VERSION=1"
+        "-sMAX_WEBGL_VERSION=2"
         "-sFETCH=1"                     # 全网榜：emscripten_fetch 走 XHR
         "-lidbfs.js"                    # IndexedDB 持久化（log.csv / 存档）
         "--preload-file" "${CMAKE_CURRENT_SOURCE_DIR}/assets@assets"
@@ -163,6 +167,8 @@ if(EMSCRIPTEN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/probe/probe.cpp")
     target_link_libraries(probe PRIVATE raylib "-sUSE_GLFW=3")
     target_link_options(probe PRIVATE
         "-sUSE_GLFW=3" "-sALLOW_MEMORY_GROWTH=1"
+        "-sMIN_WEBGL_VERSION=1" "-sMAX_WEBGL_VERSION=2"
+        "-sGL_ENABLE_GET_PROC_ADDRESS=1"
         "--preload-file" "${CMAKE_CURRENT_SOURCE_DIR}/assets/models@assets/models"
         "--shell-file"   "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
 endif()

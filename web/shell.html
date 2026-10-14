@@ -46,8 +46,13 @@
     background: #1b2233; border: 1px solid #2c3648; border-bottom-width: 2px;
     border-radius: 5px; padding: 1px 7px; font-size: 12px; color: #b9c4d8;
   }
+  /* 环境自检 + 真实报错：不用开 F12 就能看清到底哪儿不对 */
+  #env { font-size: 12px; color: #5d6678; line-height: 1.9; font-family: ui-monospace, Consolas, monospace; }
+  #env .bad { color: #ff8a8a; font-weight: 600; }
   /* 加载失败时的兜底提示 */
   #fail { display: none; font-size: 14px; color: #ff8a8a; text-align: center; line-height: 1.9; }
+  #failmsg { display: block; margin: 6px 0; font-family: ui-monospace, Consolas, monospace;
+             font-size: 12px; color: #ffd08a; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -62,14 +67,19 @@
     <kbd>鼠标</kbd> 转视角 · <kbd>左键</kbd> 射击 · <kbd>V</kbd> 切视角 ·
     <kbd>Tab</kbd> 锁定鼠标 · <kbd>ESC</kbd> 暂停
   </div>
+  <div id="env"></div>
   <div id="fail">
-    引擎加载失败。请确认浏览器支持 WebGL2，并且是通过 HTTP(S) 访问<br>
-    （直接双击 index.html 用 <code>file://</code> 打开会被浏览器的 CORS 策略拦住）。
+    <b>引擎启动失败 —— 真正的原因是下面这行：</b>
+    <span id="failmsg">（引擎没给出报错文本，先看上面那行环境自检）</span>
+    另外：必须通过 HTTP(S) 访问，双击 index.html 用 <code>file://</code> 打开会被 CORS 拦住。
   </div>
 </div>
 
 <script src="config.js"></script>
 <script>
+  // 引擎最后一条报错。abort 时页面上要显示它本身，而不是我瞎猜的原因
+  var lastErr = '';
+
   // config.js 里的 MAZE_CONFIG -> C++ 侧要读的两个全局量
   //   MAZE_API_BASE：排行榜后端基地址（Leaderboard.cpp 用 EM_ASM_PTR 读）
   //   MAZE_ONLINE  ：false 时彻底不联网（本地 log.csv 照写）
@@ -85,8 +95,8 @@
     canvas: (function () { return document.getElementById('canvas'); })(),
     locateFile: function (path) { return path; },
     print:    function (t) { console.log(t); },
-    printErr: function (t) { console.warn(t); },
-    onAbort:  function (what) { showFail(what); },
+    printErr: function (t) { console.warn(t); lastErr = String(t || ''); },
+    onAbort:  function (what) { showFail('abort: ' + what); },
     setStatus: function (text) {
       if (!text) { return; }
       var m = /\((\d+)\/(\d+)\)/.exec(text);
@@ -115,15 +125,55 @@
   }
   function setStatus(t) { document.getElementById('status').textContent = t; }
   function showFail(what) {
-    console.error('[maze] abort:', what);
+    var msg = String(what || '') || lastErr || '（无错误文本）';
+    console.error('[maze] fail:', msg);
     var s = document.getElementById('splash');
     s.classList.remove('hidden'); s.style.display = 'flex';
+    document.getElementById('failmsg').textContent = msg;
     document.getElementById('fail').style.display = 'block';
     document.querySelector('#bar').style.display = 'none';
     setStatus('加载失败');
   }
-  // 未捕获的脚本错误也走同一套兜底 UI
-  window.addEventListener('error', function (e) { showFail(e.message); });
+
+  // ---- 环境自检：先搞清楚"到底是不是 GL 的锅" ----
+  function probeGL() {
+    var lines = [];
+    function has(name) {
+      try {
+        var c = document.createElement('canvas');
+        var g = c.getContext(name, { failIfMajorPerformanceCaveat: false });
+        if (!g) { g = c.getContext('experimental-' + name); }
+        if (g) {
+          var lose = g.getExtension && g.getExtension('WEBGL_lose_context');
+          if (lose) { lose.loseContext(); }        // 探测完就把上下文还回去
+          return true;
+        }
+      } catch (e) { return false; }
+      return false;
+    }
+    var gl1 = has('webgl'), gl2 = has('webgl2');
+    lines.push('<span class="' + (gl1 || gl2 ? '' : 'bad') + '">WebGL1=' +
+               (gl1 ? 'yes' : 'NO') + '  WebGL2=' + (gl2 ? 'yes' : 'NO') + '</span>');
+    if (!gl1 && !gl2) {
+      lines.push('<span class="bad">→ 浏览器没给出任何 WebGL 上下文：' +
+                 '在 Edge 地址栏打开 edge://gpu 看 "WebGL: Disabled" 之类，' +
+                 '或在 设置→系统和性能 里打开"使用图形加速"</span>');
+    } else if (!gl2) {
+      lines.push('→ 只有 WebGL1：本项目 raylib 走 GLES2 路径，够用，不是问题');
+    }
+    lines.push('页面来自 ' + location.protocol + '//' + location.host +
+               '（必须 http/https，file:// 会被 CORS 拦）');
+    document.getElementById('env').innerHTML = lines.join('<br>');
+  }
+
+  probeGL();
+  // 未捕获的脚本错误 / Promise 崩溃也走同一套兜底 UI
+  window.addEventListener('error', function (e) {
+    showFail(e.message || (e.target && (e.target.src || e.target.href)) || 'script error');
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    showFail('unhandledrejection: ' + ((e.reason && e.reason.message) || e.reason));
+  });
 </script>
 <!-- 下面这个占位符会被 Emscripten 换成当前目标的 loader（index.js / probe.js），
      它自带完整的 <script> 标签，所以这里不要再套一层 -->
