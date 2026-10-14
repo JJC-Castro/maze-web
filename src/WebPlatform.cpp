@@ -9,6 +9,11 @@
 #include <emscripten.h>
 #endif
 
+// Provided by rcore_web.c (vendored raylib web platform, see tools/apply_web_hidpi.py):
+// re-align the canvas drawing buffer, the GL viewport and the logical screen size
+// with the browser window + devicePixelRatio in one shot.
+extern "C" void WebApplyCanvasHiDPI(void);
+
 namespace web
 {
     namespace
@@ -85,8 +90,7 @@ namespace web
             return (typeof window === 'undefined') ? 0 : (window.innerHeight | 0);
         });
         if (w < 320 || h < 240) return;                 // 窗口最小化时别跟着缩到 0
-        if (w == GetScreenWidth() && h == GetScreenHeight()) return;
-        SetWindowSize(w, h);
+        WebApplyCanvasHiDPI();
     }
 
     // -----------------------------------------------------------------------

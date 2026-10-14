@@ -1582,9 +1582,21 @@ static void ApplyCanvasHiDPI(void)
 
     const float dpr = WebDevicePixelRatio();
 
-    const int logicalWidth = (int)CORE.Window.screen.width;
-    const int logicalHeight = (int)CORE.Window.screen.height;
+    // Authoritative logical size comes from the browser window, NOT from CORE.Window.screen:
+    // the latter can lag behind (InitWindow size / SetWindowSize / GLFW callbacks), and a
+    // stale value desyncs the GL drawing surface from the canvas drawing buffer -- which
+    // shows up as the clear color leaking on the right/bottom edges.
+    int logicalWidth = EM_ASM_INT({ return (typeof window === "undefined") ? 0 : (window.innerWidth | 0); });
+    int logicalHeight = EM_ASM_INT({ return (typeof window === "undefined") ? 0 : (window.innerHeight | 0); });
+    if ((logicalWidth <= 0) || (logicalHeight <= 0))
+    {
+        logicalWidth = (int)CORE.Window.screen.width;
+        logicalHeight = (int)CORE.Window.screen.height;
+    }
     if ((logicalWidth <= 0) || (logicalHeight <= 0)) return;
+
+    CORE.Window.screen.width = (unsigned int)logicalWidth;
+    CORE.Window.screen.height = (unsigned int)logicalHeight;
 
     const int bufferWidth = (int)((logicalWidth*dpr) + 0.5f);
     const int bufferHeight = (int)((logicalHeight*dpr) + 0.5f);
@@ -1605,10 +1617,17 @@ static void ApplyCanvasHiDPI(void)
     CORE.Window.screenScale = MatrixScale(dpr, dpr, 1.0f);
 
     // 视口和正交投影跟着缓冲区走（SetupViewport 会把 render.width/height 设成物理像素）
-    if ((CORE.Window.render.width != bufferWidth) || (CORE.Window.render.height != bufferHeight))
-    {
-        SetupViewport(bufferWidth, bufferHeight);
-    }
+    // Always re-assert viewport/ortho: other paths (GLFW window-size callback, SetWindowSize,
+    // EndTextureMode restoring a stale render size) can leave the drawing surface at the
+    // logical size while the canvas buffer is physical (logical x devicePixelRatio).
+    SetupViewport(bufferWidth, bufferHeight);
+}
+
+// Public hook for the game layer (src/WebPlatform.cpp): force a HiDPI (re)sync.
+// Keeps screen size / canvas drawing buffer / viewport consistent every frame.
+void WebApplyCanvasHiDPI(void)
+{
+    ApplyCanvasHiDPI();
 }
 
 // GLFW3: Called when the drawing buffer (framebuffer) size changes
