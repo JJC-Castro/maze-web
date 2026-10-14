@@ -118,6 +118,22 @@ endif()
 # ---------------------------------------------------------------------------
 #  探针：只依赖 raylib 的最小三角，用来单独验证 emcc 工具链
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+#  自检（纯桌面）：验自己手写的 SHA-256 / HMAC-SHA256 跟 Python hashlib 一致。
+#  排行榜签名全靠它，算错了成绩会被服务端 403 拒收，所以单独留个靶子。
+#    cmake --build build\desktop --config Release --target selftest
+#    build\desktop\Release\selftest.exe > out.txt
+#    python tools\selftest\check.py out.txt
+# ---------------------------------------------------------------------------
+add_executable(selftest EXCLUDE_FROM_ALL
+    tools/selftest/selftest.cpp
+    src/Sha256.cpp
+)
+target_include_directories(selftest PRIVATE src)
+if(MSVC)
+    target_compile_options(selftest PRIVATE /utf-8)
+endif()
+
 if(EMSCRIPTEN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/probe/probe.cpp")
     add_executable(probe probe/probe.cpp)
     set_target_properties(probe PROPERTIES SUFFIX ".html" OUTPUT_NAME "probe")
