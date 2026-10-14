@@ -22,4 +22,21 @@ namespace web
 
     // 挂载是否已经建立（只表示"调用过"，不表示数据已读完）
     bool Ready();
+
+    // 每帧调一次：让 raylib 的 drawing buffer 跟着浏览器窗口走。
+    // 不这么做的话，Emscripten 的 GLFW 只改 canvas 的 CSS 尺寸（noResize），
+    // 真正的渲染分辨率还停在初始的 1280x720，浏览器把它拉伸到 1080p/2K 窗口
+    // —— 画面就是这么糊掉的。桌面版是空实现。
+    void SyncCanvasToWindow();
+
+    // 鼠标"真的"被锁定了吗（游戏拿它当"能不能转视角"的开关）
+    //
+    // 为什么不能直接用 raylib 的 IsCursorHidden()：
+    //   桌面版的 DisableCursor() 会把 CORE.Input.Mouse.cursorHidden 置 true，
+    //   于是 IsCursorHidden() 恰好等于"锁定状态"；
+    //   但 Web 后端的 DisableCursor() 只调 emscripten_request_pointerlock()，
+    //   从不动 cursorHidden —— 浏览器里它恒为 false，游戏就以为鼠标永远没锁上，
+    //   鼠标怎么拖视角都不动。所以 Web 版直接问浏览器：
+    //   document.pointerLockElement 是不是我们这块 canvas。
+    bool CursorLocked();
 }

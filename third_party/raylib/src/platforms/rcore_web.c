@@ -122,6 +122,8 @@ static void WindowIconifyCallback(GLFWwindow *window, int iconified);           
 static void WindowFocusCallback(GLFWwindow *window, int focused);                       // GLFW3 Window Focus Callback, runs when window get/lose focus
 static void WindowDropCallback(GLFWwindow *window, int count, const char **paths);      // GLFW3 Window Drop Callback, runs when drop files into window
 static void WindowContentScaleCallback(GLFWwindow *window, float scalex, float scaley); // GLFW3 Window Content Scale Callback, runs when window changes scale
+static void WindowFramebufferSizeCallback(GLFWwindow *window, int width, int height);  // GLFW3 Window Framebuffer Size Callback, runs when the drawing buffer changes size
+static void ApplyCanvasHiDPI(void);                                                    // Web: 按 devicePixelRatio 把 canvas 绘制缓冲区提到物理像素（等价于桌面版的 HiDPI 缩放）
 
 // Input callbacks events
 static void KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods); // GLFW3 Keyboard Callback, runs on key pressed
@@ -929,6 +931,10 @@ void EnableCursor(void)
 {
     emscripten_exit_pointerlock();
 
+    // 告诉 shell.html：游戏现在是明确"解锁"状态，别再补请求 pointer lock 了
+    // （菜单里把指针锁住的话鼠标坐标会卡在画面中央，菜单就点不动）
+    EM_ASM({ Module.mazeWantPointerLock = false; });
+
     // Set cursor position in the middle
     SetMousePosition(CORE.Window.screen.width/2, CORE.Window.screen.height/2);
 
@@ -938,6 +944,10 @@ void EnableCursor(void)
 // Disables cursor (lock cursor)
 void DisableCursor(void)
 {
+    // 记下"游戏想要锁定鼠标"：真正锁上还得靠用户手势，被浏览器拒的时候
+    // shell.html 会在下一次点击画面时补一次 requestPointerLock()
+    EM_ASM({ Module.mazeWantPointerLock = true; });
+
     emscripten_request_pointerlock(platform.canvasId, 1);
 
     // Set cursor position in the middle
@@ -1393,11 +1403,11 @@ int InitPlatform(void)
     glfwSetWindowFocusCallback(platform.handle, WindowFocusCallback);
     glfwSetDropCallback(platform.handle, WindowDropCallback);
 
-    if (FLAG_IS_SET(CORE.Window.flags, FLAG_WINDOW_HIGHDPI))
-    {
-        // Window content (framebuffer) scale callback
-        glfwSetWindowContentScaleCallback(platform.handle, WindowContentScaleCallback);
-    }
+    // Web 上和"分辨率"有关的两个回调无条件注册，跟 FLAG_WINDOW_HIGHDPI 无关：
+    //   绘制缓冲区（物理像素）变了要重算 canvas 尺寸和视口；
+    //   浏览器缩放（devicePixelRatio）变了也一样。
+    glfwSetFramebufferSizeCallback(platform.handle, WindowFramebufferSizeCallback);
+    glfwSetWindowContentScaleCallback(platform.handle, WindowContentScaleCallback);
 
     // Set input callback events
     glfwSetKeyCallback(platform.handle, KeyCallback);
@@ -1462,6 +1472,9 @@ int InitPlatform(void)
 
     // Trigger resize callback to force initial size
     EmscriptenResizeCallback(EMSCRIPTEN_EVENT_RESIZE, NULL, NULL);
+
+    // 上一步只把 canvas 缓冲区设成逻辑尺寸，这里按 devicePixelRatio 提到物理像素
+    ApplyCanvasHiDPI();
 
     // Setup input events
     // NOTE: Keyboard callbacks only used to consume some events, libglfw.js takes care of the actual input
@@ -1541,6 +1554,76 @@ static void WindowSizeCallback(GLFWwindow *window, int width, int height)
 static void WindowContentScaleCallback(GLFWwindow *window, float scalex, float scaley)
 {
     CORE.Window.screenScale = MatrixScale(scalex, scaley, 1.0f);
+}
+
+// Web: 当前屏幕缩放系数（Windows 150% 缩放的系统上是 1.5）
+static float WebDevicePixelRatio(void)
+{
+    float dpr = (float)EM_ASM_DOUBLE({ return (window.devicePixelRatio || 1.0); });
+
+    if (dpr < 1.0f) dpr = 1.0f;
+    if (dpr > 2.0f) dpr = 2.0f;     // 上限 2x：再高只是白烧 GPU，肉眼基本看不出差别
+
+    return dpr;
+}
+
+// Web: 按 devicePixelRatio 把 canvas 的绘制缓冲区提到"物理像素"。
+//
+// 桌面版对应的是 FLAG_WINDOW_HIGHDPI 那三件套：
+//     screen      = 逻辑像素（鼠标坐标、UI 布局都用它）
+//     render/FBO  = 物理像素（真正的绘制缓冲区）
+//     screenScale = 逻辑 -> 物理 的缩放矩阵（BeginDrawing 里挂上去）
+// 浏览器里 raylib 三件都没做过：缓冲区永远等于逻辑像素，于是 150% 缩放的屏幕上
+// 浏览器把整幅画面放大 1.5 倍再铺到屏幕像素 —— 整幅（尤其中文小字）全糊。
+// CSS 尺寸仍钉在逻辑像素，所以鼠标坐标、UI 布局都不用跟着改。
+static void ApplyCanvasHiDPI(void)
+{
+    if (!CORE.Window.ready) return;
+
+    const float dpr = WebDevicePixelRatio();
+
+    const int logicalWidth = (int)CORE.Window.screen.width;
+    const int logicalHeight = (int)CORE.Window.screen.height;
+    if ((logicalWidth <= 0) || (logicalHeight <= 0)) return;
+
+    const int bufferWidth = (int)((logicalWidth*dpr) + 0.5f);
+    const int bufferHeight = (int)((logicalHeight*dpr) + 0.5f);
+
+    // 读出来不一样才写：给 canvas.width/height 赋值会重建整块绘制缓冲区，代价不小
+    EM_ASM({
+        var canvas = Module.canvas;
+        if (!canvas) return;
+
+        if (canvas.width != $0) canvas.width = $0;          // 绘制缓冲区 = 物理像素
+        if (canvas.height != $1) canvas.height = $1;
+        if (canvas.style.width != ($2 + "px")) canvas.style.setProperty("width", $2 + "px", "important");
+        if (canvas.style.height != ($3 + "px")) canvas.style.setProperty("height", $3 + "px", "important");
+    }, bufferWidth, bufferHeight, logicalWidth, logicalHeight);
+
+    CORE.Window.currentFbo.width = bufferWidth;
+    CORE.Window.currentFbo.height = bufferHeight;
+    CORE.Window.screenScale = MatrixScale(dpr, dpr, 1.0f);
+
+    // 视口和正交投影跟着缓冲区走（SetupViewport 会把 render.width/height 设成物理像素）
+    if ((CORE.Window.render.width != bufferWidth) || (CORE.Window.render.height != bufferHeight))
+    {
+        SetupViewport(bufferWidth, bufferHeight);
+    }
+}
+
+// GLFW3: Called when the drawing buffer (framebuffer) size changes
+// NOTE: 故意不用回调参数 —— 浏览器里 framebuffer 尺寸由 devicePixelRatio 决定，
+//       而 Emscripten 的 GLFW 在非 HiDPI 感知模式下报上来的其实是窗口逻辑尺寸。
+//       统一交给 ApplyCanvasHiDPI() 按当前 dpr 重算，对上层永远是幂等的。
+static void WindowFramebufferSizeCallback(GLFWwindow *window, int width, int height)
+{
+    (void)window;
+    (void)width;
+    (void)height;
+
+    ApplyCanvasHiDPI();
+
+    CORE.Window.resizedLastFrame = true;
 }
 
 // GLFW3: Called on windows minimized/restored
@@ -1919,6 +2002,9 @@ static EM_BOOL EmscriptenResizeCallback(int eventType, const EmscriptenUiEvent *
     CORE.Window.screen.height = height;
 
     glfwSetWindowSize(platform.handle, CORE.Window.screen.width, CORE.Window.screen.height);
+
+    // glfwSetWindowSize() 会把 canvas 缓冲区改回逻辑尺寸，这里再按 dpr 提到物理像素
+    ApplyCanvasHiDPI();
 
     // NOTE: Postprocessing texture is not scaled to new size
 

@@ -65,7 +65,8 @@
   <div id="tips">
     <kbd>W A S D</kbd> 移动 · <kbd>Shift</kbd> 奔跑 · <kbd>Space</kbd> 跳跃 ·
     <kbd>鼠标</kbd> 转视角 · <kbd>左键</kbd> 射击 · <kbd>V</kbd> 切视角 ·
-    <kbd>Tab</kbd> 锁定鼠标 · <kbd>ESC</kbd> 暂停
+    <kbd>Tab</kbd> 锁定鼠标 · <kbd>ESC</kbd> 暂停<br>
+    浏览器只允许"用户点一下之后"锁鼠标 —— 进游戏后<b>点一下画面</b>就能转视角了
   </div>
   <div id="env"></div>
   <div id="fail">
@@ -167,6 +168,24 @@
   }
 
   probeGL();
+
+  // ---- 鼠标视角：pointer lock 只能由用户手势触发 ----
+  //   raylib 请求锁定的时候如果不在用户手势里，浏览器会直接拒；被拒之后它不会再试，
+  //   于是"鼠标完全转不动视角"。这里在画布上补一次手势内的请求。
+  //   该不该补，看 Module.mazeWantPointerLock —— 那是 C++ 侧 raylib 后端在
+  //   DisableCursor() / EnableCursor() 里维护的"游戏到底想不想锁鼠标"。
+  //   菜单里游戏是明确解锁的，那会儿补锁会把鼠标坐标钉在画面中央，菜单反而点不动。
+  //   另外：游戏里的 Tab 仍然可以正常解锁/锁定（键盘事件也算用户手势）。
+  (function () {
+    var cv = document.getElementById('canvas');
+    function relock() {
+      if (document.pointerLockElement === cv) return;       // 已经锁着就别管
+      if (Module.mazeWantPointerLock !== true) return;      // 游戏没想锁定 -> 别插手
+      try { cv.requestPointerLock(); } catch (e) { /* 退出锁定后的冷却期内会失败，下次点击再试 */ }
+    }
+    cv.addEventListener('mousedown', function () { setTimeout(relock, 0); });
+  })();
+
   // 未捕获的脚本错误 / Promise 崩溃也走同一套兜底 UI
   window.addEventListener('error', function (e) {
     showFail(e.message || (e.target && (e.target.src || e.target.href)) || 'script error');

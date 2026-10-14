@@ -328,6 +328,20 @@ PATCHES = [
 }""",
           'main.cpp: 关掉 RlAssetDir 的 Web 分支'),
 
+    # --------------------------------------------------------------- main.cpp
+    Patch('main.cpp',
+          '''#include "Nailong.h"
+#include "TPCamera.h"
+''',
+          '''#include "Nailong.h"
+#include "TPCamera.h"
+// WebPlatform 桌面版也有一份空实现（比如 SyncCanvasToWindow），
+// 所以无条件包含 —— 主循环里那句调用就不用再套一层 #ifdef。
+#include "WebPlatform.h"
+#include "Leaderboard.h"    // 全网榜（桌面版是空实现，调它不花钱）
+''',
+          'main.cpp: 引入 WebPlatform / Leaderboard'),
+
     # --------------------------------------------- 全网榜：Account 侧的三个钩子
     Patch('Account.cpp',
           """#include "Account.h"
@@ -420,7 +434,15 @@ PATCHES = [
           """    return dir + \"\\\\rl\\\\out\";
 #endif
 }""",
-          'main.cpp: 关上 RlRouteDir 的 #ifdef'),]
+          'main.cpp: 关上 RlRouteDir 的 #ifdef'),
+
+    # --------------------------------------- 鼠标锁定状态改用平台给的真实状态
+    Patch('main.cpp',
+          """                cursorLocked = IsCursorHidden();          // 跟随 raylib 实际状态（暂停/结算时鼠标是解锁的）""",
+          """                // 不能用 IsCursorHidden()：Web 后端的 DisableCursor() 只请求 pointer lock，
+                // 从不动 cursorHidden，浏览器里它恒为 false —— 视角就永远拖不动。
+                cursorLocked = web::CursorLocked();       // 跟随真实锁定状态（暂停/结算时鼠标是解锁的）""",
+          'main.cpp: 鼠标锁定状态改用 WebPlatform::CursorLocked()'),]
 
 
 def apply(check_only=False):

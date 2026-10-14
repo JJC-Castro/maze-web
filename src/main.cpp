@@ -17,9 +17,9 @@ using namespace std;
 #include "SfxAudio.h"
 #include "Nailong.h"
 #include "TPCamera.h"
-#ifdef MAZE_WEB
-#include "WebPlatform.h"    // IndexedDB 挂载：存档 / log.csv 的持久化目录
-#endif
+// WebPlatform 桌面版也有一份空实现（比如 SyncCanvasToWindow），
+// 所以无条件包含 —— 主循环里那句调用就不用再套一层 #ifdef。
+#include "WebPlatform.h"
 #include "Leaderboard.h"    // 全网榜（桌面版是空实现，调它不花钱）
 
 #include "RL/RLNet.h"
@@ -2463,6 +2463,8 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
     GameState loggedState = state;
     while (!WindowShouldClose())
     {
+        web::SyncCanvasToWindow();      // Web：让渲染分辨率跟住浏览器窗口，不然画面被拉伸成一片糊（桌面版空实现）
+
         const float dt = GetFrameTime();
 
         // 踩雷反馈计时衰减
@@ -3423,7 +3425,9 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
                 }
 
                 // ---- 奶龙：鼠标锁定 + 视角切换 + 动画状态机 ----
-                cursorLocked = IsCursorHidden();          // 跟随 raylib 实际状态（暂停/结算时鼠标是解锁的）
+                // 不能用 IsCursorHidden()：Web 后端的 DisableCursor() 只请求 pointer lock，
+                // 从不动 cursorHidden，浏览器里它恒为 false —— 视角就永远拖不动。
+                cursorLocked = web::CursorLocked();       // 跟随真实锁定状态（暂停/结算时鼠标是解锁的）
                 if (IsKeyPressed(KEY_TAB))                // Tab：锁定 / 解锁鼠标
                 {
                     if (cursorLocked) EnableCursor();

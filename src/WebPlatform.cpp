@@ -3,6 +3,8 @@
 // ===========================================================================
 #include "WebPlatform.h"
 
+#include "raylib.h"     // GetScreenWidth / SetWindowSize（SyncCanvasToWindow 用）
+
 #ifdef MAZE_WEB
 #include <emscripten.h>
 #endif
@@ -22,6 +24,8 @@ namespace web
     void InitFileSystem() {}
     void FlushFileSystem() {}
     bool Ready() { return true; }
+    void SyncCanvasToWindow() {}       // 桌面版：窗口就是窗口，没什么要同步的
+    bool CursorLocked() { return IsCursorHidden(); }   // 桌面版：cursorHidden 就是锁定状态
 
 #else
 
@@ -63,6 +67,38 @@ namespace web
     }
 
     bool Ready() { return gReady; }
+
+    // -----------------------------------------------------------------------
+    //  1 个渲染像素 = 1 个 CSS 像素
+    //    Emscripten 的 GLFW 处理窗口 resize 时调的是 Browser.setCanvasSize(w, h, true)
+    //    —— 那个 true 表示"只改 CSS 尺寸，别动 canvas 的像素尺寸"。于是 drawing
+    //    buffer 一直是 InitWindow 时的尺寸，浏览器把这张小位图放大铺满窗口 → 糊。
+    //    这里每帧对一次尺寸，不一致就让 raylib 重设窗口（它内部会重设 canvas 像素
+    //    尺寸并重算视口）。对比的是 raylib 自己记的尺寸，所以不会抖。
+    // -----------------------------------------------------------------------
+    void SyncCanvasToWindow()
+    {
+        const int w = (int)EM_ASM_INT({
+            return (typeof window === 'undefined') ? 0 : (window.innerWidth | 0);
+        });
+        const int h = (int)EM_ASM_INT({
+            return (typeof window === 'undefined') ? 0 : (window.innerHeight | 0);
+        });
+        if (w < 320 || h < 240) return;                 // 窗口最小化时别跟着缩到 0
+        if (w == GetScreenWidth() && h == GetScreenHeight()) return;
+        SetWindowSize(w, h);
+    }
+
+    // -----------------------------------------------------------------------
+    //  鼠标锁定状态
+    //    raylib 内部的 EmscriptenPointerlockCallback 看的就是
+    //    document.pointerLockElement，游戏侧够不着那个内部字段，所以这里
+    //    问浏览器同一个事实。
+    // -----------------------------------------------------------------------
+    bool CursorLocked()
+    {
+        return EM_ASM_INT({ return (document.pointerLockElement != null) ? 1 : 0; }) != 0;
+    }
 
 #endif
 }
