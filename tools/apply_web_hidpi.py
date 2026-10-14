@@ -258,6 +258,40 @@ void WebApplyCanvasHiDPI(void)
 // GLFW3: Called when the drawing buffer (framebuffer) size changes""",
         'rcore_web.c: export WebApplyCanvasHiDPI hook'),
 
+    # 网页版"鼠标左键点击失效"的根因：Emscripten 的 GLFW 只会在浏览器 resize 事件里
+    # 更新自己的窗口尺寸（GLFW.active），页面刚打开时没人触发过 resize，它会一直以为
+    # 自己还是 InitWindow(1280x720) 那个窗口。它算鼠标坐标时乘的是
+    # "GLFW.active.width / canvas 的 CSS 宽度"（见 libglfw.js 的 calculateMouseCoords），
+    # 于是页面 1570 宽时鼠标被整体乘上 1280/1570≈0.81 往左上压，所有按钮都点不中。
+    # 这里把 GLFW 的逻辑窗口尺寸对齐到浏览器窗口，只在真的不一致时调，避免每帧重建缓冲区。
+    Patch(
+"""    CORE.Window.screen.width = (unsigned int)logicalWidth;
+    CORE.Window.screen.height = (unsigned int)logicalHeight;""",
+"""    CORE.Window.screen.width = (unsigned int)logicalWidth;
+    CORE.Window.screen.height = (unsigned int)logicalHeight;
+
+    // Emscripten 的 GLFW 只在浏览器 resize 事件里更新自己的窗口尺寸（GLFW.active），
+    // 页面刚打开时没人触发过 resize，于是它一直以为自己还是 InitWindow(1280x720)
+    // 那个窗口。它算鼠标坐标经过 "GLFW.active.width / rect.width" 一缩，就成了
+    // 1280/1570 ≈ 0.81：鼠标整体被往左上压，界面按钮全部点不中 —— 这就是网页版
+    // "鼠标左键点击失效"的根因。
+    // 这里把 GLFW 的逻辑窗口尺寸对齐到浏览器窗口（不一致才调，避免每帧重建绘制缓冲区）。
+    {
+        int glfwWindowWidth = 0;
+        int glfwWindowHeight = 0;
+        glfwGetWindowSize(platform.handle, &glfwWindowWidth, &glfwWindowHeight);
+
+        if ((glfwWindowWidth != logicalWidth) || (glfwWindowHeight != logicalHeight))
+        {
+            glfwSetWindowSize(platform.handle, logicalWidth, logicalHeight);
+
+            // glfwSetWindowSize() 会把 canvas 缓冲区改回逻辑尺寸，下面的 EM_ASM 会
+            // 再把它提到物理像素（dpr 倍），所以这里不用做别的事。
+            CORE.Window.resizedLastFrame = true;
+        }
+    }""",
+        'rcore_web.c: sync GLFW logical window size with the browser window (mouse coords)'),
+
 ]
 
 
