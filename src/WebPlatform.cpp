@@ -48,6 +48,9 @@ namespace web
         EM_ASM({
             try { FS.mkdir('/maze'); } catch (e) { }
             try { FS.mount(IDBFS, {}, '/maze'); } catch (e) { }
+            // 子目录要在挂载之后建，否则挂载会把内存里的空目录冲掉
+            try { FS.mkdir('/maze/saves'); } catch (e) { }
+            try { FS.mkdir('/maze/rl_log'); } catch (e) { }
         });
         JsSyncFs(1);            // 把上一次的记录读回来
         gReady = true;

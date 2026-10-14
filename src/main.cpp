@@ -879,7 +879,13 @@ static bool DoSave(const std::unique_ptr<Maze>& maze,
     data.elapsed = elapsed;
 
     char path[64];
+#ifdef MAZE_WEB
+    // Web：存档必须写进 IndexedDB 挂载点（/maze），写相对路径刷新页面就没了。
+    // 目录由 WebPlatform::InitFileSystem() 建好。
+    snprintf(path, sizeof(path), "/maze/saves/slot%d.json", slot);
+#else
     snprintf(path, sizeof(path), "saves/slot%d.json", slot);
+#endif
     return GameSave::Save(path, *maze, *player, data);
 }
 
@@ -894,7 +900,13 @@ static bool DoLoad(std::unique_ptr<Maze>& maze,
     if (!player) player = std::make_unique<Player>(Vector3{ 0, EYE_HEIGHT, 0 });
 
     char path[64];
+#ifdef MAZE_WEB
+    // Web：存档必须写进 IndexedDB 挂载点（/maze），写相对路径刷新页面就没了。
+    // 目录由 WebPlatform::InitFileSystem() 建好。
+    snprintf(path, sizeof(path), "/maze/saves/slot%d.json", slot);
+#else
     snprintf(path, sizeof(path), "saves/slot%d.json", slot);
+#endif
     return GameSave::Load(path, *maze, *player, outData);
 }
 
@@ -1109,6 +1121,10 @@ static std::string RlAssetDir()
 // RL 路线导出目录：<仓库>\rl\out（和 Python 训练产物放一起，.gitignore 已忽略）
 static std::string RlRouteDir()
 {
+#ifdef MAZE_WEB
+    // Web：路线导出落在 IndexedDB 目录里（纯调试产物，别往相对路径写）
+    return std::string("/maze/rl_log");
+#else
     std::string dir = RlAssetDir();                 // <仓库>\codes\rl_assets
     for (int i = 0; i < 2; ++i)                     // 再上溯两级到 <仓库>
     {
@@ -1117,6 +1133,7 @@ static std::string RlRouteDir()
         dir = dir.substr(0, up);
     }
     return dir + "\\rl\\out";
+#endif
 }
 
 // 三个难度各一份权重；地狱复用困难（迷宫尺寸一样）

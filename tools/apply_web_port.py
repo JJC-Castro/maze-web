@@ -385,7 +385,42 @@ PATCHES = [
 
     bool (*better)(const ScoreRecord&, const ScoreRecord&) =
         (board == RankBoard::Time) ? BetterByTime : BetterByScore;""",
-          'Account: 排名页并进云端成绩'),]
+          'Account: 排名页并进云端成绩'),
+
+    # --------------------------------------------------------------- main.cpp
+    Patch('main.cpp',
+          """    char path[64];
+    snprintf(path, sizeof(path), "saves/slot%d.json", slot);""",
+          """    char path[64];
+#ifdef MAZE_WEB
+    // Web：存档必须写进 IndexedDB 挂载点（/maze），写相对路径刷新页面就没了。
+    // 目录由 WebPlatform::InitFileSystem() 建好。
+    snprintf(path, sizeof(path), "/maze/saves/slot%d.json", slot);
+#else
+    snprintf(path, sizeof(path), "saves/slot%d.json", slot);
+#endif""",
+          'main.cpp: 存档路径改到 /maze/saves（IndexedDB 持久化）', count=2),
+
+    Patch('main.cpp',
+          """static std::string RlRouteDir()
+{
+    std::string dir = RlAssetDir();""",
+          """static std::string RlRouteDir()
+{
+#ifdef MAZE_WEB
+    // Web：路线导出落在 IndexedDB 目录里（纯调试产物，别往相对路径写）
+    return std::string(\"/maze/rl_log\");
+#else
+    std::string dir = RlAssetDir();""",
+          'main.cpp: 路线导出目录改到 /maze/rl_log'),
+
+    Patch('main.cpp',
+          """    return dir + \"\\\\rl\\\\out\";
+}""",
+          """    return dir + \"\\\\rl\\\\out\";
+#endif
+}""",
+          'main.cpp: 关上 RlRouteDir 的 #ifdef'),]
 
 
 def apply(check_only=False):
