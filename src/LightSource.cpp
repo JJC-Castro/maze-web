@@ -253,6 +253,28 @@ void LightSource::Init(int w, int h)
     }
 }
 
+// Keep the capture render texture in sync with the current screen size. The window can
+// change size at any time (browser resize / maximise), and a stale RT would make the 3D
+// scene render into a smaller buffer than the screen -- the clear color then shows up
+// around the scene and the character (drawn outside the RT) no longer matches it.
+void LightSource::EnsureSize(int w, int h)
+{
+    if ((w <= 0) || (h <= 0)) return;
+    if ((w == width) && (h == height) && (target.id != 0)) return;
+
+    if (target.id != 0) UnloadRenderTexture(target);
+    target = RenderTexture2D{};
+
+    width = w;
+    height = h;
+    target = LoadRenderTexture(width, height);
+
+    ready = (target.id != 0) && (fogShader.id != 0) && (blurShader.id != 0) &&
+            (fogLightPosLoc >= 0) && (fogRadiusLoc >= 0) && (fogInnerLoc >= 0) &&
+            (fogDarknessLoc >= 0) && (blurTexSizeLoc >= 0) && (blurAmountLoc >= 0) &&
+            (blurEdgeLoc >= 0) && (blurInnerLoc >= 0);
+}
+
 void LightSource::Unload()
 {
     if (target.id != 0) UnloadRenderTexture(target);
@@ -314,9 +336,13 @@ void LightSource::Draw()
 
     BeginShaderMode(blurShader);
     // 负高度把离屏（上下翻转）的画面正回来
-    DrawTextureRec(target.texture,
+    // Stretch the capture to the whole screen: the drawing surface may be larger than
+    // the RT (window resized after Init), and leaving the edges bare shows ClearBackground.
+    DrawTexturePro(target.texture,
                    Rectangle{ 0.0f, 0.0f, (float)width, -(float)height },
+                   Rectangle{ 0.0f, 0.0f, (float)GetScreenWidth(), (float)GetScreenHeight() },
                    Vector2{ 0.0f, 0.0f },
+                   0.0f,
                    WHITE);
     EndShaderMode();
 }

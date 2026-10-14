@@ -4442,6 +4442,8 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
             // 增益「暗视」：开局 30s 内不受光源限制；「狂笑」：奶龙大笑期间不受光源限制
             const bool darkFree = rogue.active && rogue.darkFreeTimer > 0.0f;
             const bool laughFree = RogueHas(Buff::NO_LIGHT_LIMIT);   // 常亮视野：不用大笑也生效
+            // Web: the window can be resized/rescaled at any time -> keep the capture RT in sync
+            light.EnsureSize(GetScreenWidth(), GetScreenHeight());
             const bool lightOn = IsLightLimited(EffectiveDifficulty()) && light.IsReady() &&
                 !adminMode && !darkFree && !laughFree;
             if (lightOn)

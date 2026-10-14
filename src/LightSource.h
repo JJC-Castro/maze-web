@@ -33,6 +33,9 @@ class LightSource
 {
 public:
     void Init(int width, int height);   // 建离屏缓冲 + 编译 shader
+
+    // Window/browser resize: rebuild the capture RT when the target size changes
+    void EnsureSize(int w, int h);
     void Unload();                      // 释放资源
 
     // shader / 离屏缓冲是否可用；不可用时调用方应退回普通渲染
