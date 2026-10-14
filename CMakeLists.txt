@@ -103,6 +103,13 @@ if(EMSCRIPTEN)
         # 写死 1~2 让 Emscripten 按浏览器实际能力挑，别把只有 WebGL1 的机器挡在门外。
         "-sMIN_WEBGL_VERSION=1"
         "-sMAX_WEBGL_VERSION=2"
+        # ⚠ 必须开 ASYNCIFY：raylib 的 WebAudio 后端（miniaudio）在 InitAudioDevice()
+        #   里是这么等初始化的 —— while (initResult == MA_BUSY) emscripten_sleep(1);
+        #   没开 ASYNCIFY 时 emscripten_sleep 直接 abort（浏览器里表现为"引擎启动失败"）。
+        #   代价：wasm 变大一点、慢一点，但换来音频能用。
+        "-sASYNCIFY"
+        "-sASYNCIFY_IMPORTS=emscripten_sleep"
+        "-sASYNCIFY_IGNORE_INDIRECT"
         "-sFETCH=1"                     # 全网榜：emscripten_fetch 走 XHR
         "-lidbfs.js"                    # IndexedDB 持久化（log.csv / 存档）
         "--preload-file" "${CMAKE_CURRENT_SOURCE_DIR}/assets@assets"

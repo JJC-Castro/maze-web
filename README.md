@@ -281,6 +281,37 @@ web::FlushFileSystem();    // 写完 log.csv / 存档后：同步回 IndexedDB
 
 ---
 
+### 3.7 音频：Web 版必须要 `-sASYNCIFY`
+
+这条最坑，而且症状极具误导性 —— 页面直接"引擎启动失败"，报错是：
+
+```
+Aborted(Please compile your program with async support in order to use asynchronous
+operations like emscripten_sleep). Build with -s ASYNCIFY for more info.
+```
+
+真凶不在游戏代码里，而在 raylib 的 WebAudio 后端 `external/miniaudio.h`：
+
+```c
+while (pDevice->webaudio.initResult == MA_BUSY) { emscripten_sleep(1); }   /* 就这一行 */
+```
+
+`InitAudioDevice()` 一进来就撞上这个自旋，而没开 ASYNCIFY 时 `emscripten_sleep`
+在 wasm 里只是一个直接 `abort()` 的桩。所以 CMakeLists 里给 maze 加了：
+
+```cmake
+"-sASYNCIFY" "-sASYNCIFY_IMPORTS=emscripten_sleep" "-sASYNCIFY_IGNORE_INDIRECT"
+```
+
+`ASYNCIFY_IMPORTS` 把异步化范围限制在 `emscripten_sleep` 的调用链上：实测 wasm 只从
+1,168,250 B 涨到 1,171,797 B（+3.4 KB），几乎零代价；而裸 `-sASYNCIFY` 会明显变慢变大。
+
+同时说清另一件容易误判的事：raylib for Web 编出来是 `GRAPHICS_API_OPENGL_ES2`，
+**根本不需要 WebGL2**；index.html 里那句"请确认支持 WebGL2"是旧版兜底文案，
+现在页面会自己回报 `WebGL1=… WebGL2=…` 和引擎的真实报错文本。
+
+---
+
 ## 四、全网排行榜
 
 ### 4.1 架构
