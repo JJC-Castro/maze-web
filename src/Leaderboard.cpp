@@ -7,6 +7,8 @@
 #include "Sha256.h"
 
 #include <cstdio>
+#include <cstdlib>      // malloc / free
+#include <cstring>      // memcpy
 #include <map>
 #include <mutex>
 #include <string>
@@ -132,6 +134,11 @@ namespace lb
     // ---- 上传完成回调 ----
     void OnSubmitDone(emscripten_fetch_t* fetch)
     {
+        // requestData 是上面 malloc 出来的：XHR 的 send() 时机由 Emscripten 决定，
+        // 保险做法就是活到回调里再放掉（见下面 Submit 的注释）。
+        std::free(fetch->userData);
+        fetch->userData = nullptr;
+
         if (fetch->status == 200)
         {
             gStatus = "uploaded";
@@ -149,6 +156,8 @@ namespace lb
 
     void OnFetchError(emscripten_fetch_t* fetch)
     {
+        std::free(fetch->userData);
+        fetch->userData = nullptr;
         gStatus = "offline";
         emscripten_fetch_close(fetch);
     }
@@ -157,10 +166,13 @@ namespace lb
     void OnBoardDone(emscripten_fetch_t* fetch)
     {
         const std::string body(fetch->data, (size_t)fetch->numBytes);
-        const std::string key = (const char*)fetch->userData;
+        const std::string key = (fetch->userData != nullptr)
+            ? *(const std::string*)fetch->userData : std::string();
         char url[256] = { 0 };
         std::snprintf(url, sizeof(url), "%s", fetch->url);
         emscripten_fetch_close(fetch);
+        delete (std::string*)fetch->userData;      // 回调里收尾，别让 key 常驻内存
+        fetch->userData = nullptr;
 
         // key 形如 "easy|score"
         const size_t bar = key.find('|');
@@ -214,7 +226,10 @@ namespace lb
 
     void OnBoardError(emscripten_fetch_t* fetch)
     {
-        const std::string key = (const char*)fetch->userData;
+        const std::string key = (fetch->userData != nullptr)
+            ? *(const std::string*)fetch->userData : std::string();
+        delete (std::string*)fetch->userData;
+        fetch->userData = nullptr;
         if (!key.empty())
         {
             std::lock_guard<std::mutex> lock(gMutex);
@@ -255,8 +270,16 @@ namespace lb
         attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
         attr.onsuccess = OnSubmitDone;
         attr.onerror = OnFetchError;
-        attr.requestData = body.c_str();
+        // ⚠ 这里不能直接给 body.c_str()：emscripten_fetch 的异步路径会把真正的
+        //   XHR send() 推迟到下一轮事件循环，那时这个局部 std::string 已经析构了，
+        //   发出去的会是野指针内容（签名必然验不过，甚至崩）。所以拷一份到堆上，
+        //   在回调里 free。
+        char* bodyOwned = (char*)std::malloc(body.size() + 1);
+        if (bodyOwned == nullptr) return;
+        std::memcpy(bodyOwned, body.c_str(), body.size() + 1);
+        attr.requestData = bodyOwned;
         attr.requestDataSize = body.size();
+        attr.userData = bodyOwned;
         static const char* headers[] = { "Content-Type", "application/json", nullptr };
         attr.requestHeaders = headers;
 
@@ -285,10 +308,8 @@ namespace lb
         attr.onsuccess = OnBoardDone;
         attr.onerror = OnBoardError;
 
-        // userData 由回调读取，必须是常驻内存；这里用静态字符串池
-        static std::vector<std::string*> pool;
-        pool.push_back(new std::string(key));
-        attr.userData = (void*)pool.back()->c_str();
+        // userData 由回调读取，必须是常驻内存：堆上放一份，回调里 delete
+        attr.userData = (void*)new std::string(key);
 
         static std::string urlStorage;
         urlStorage = Url(q);
