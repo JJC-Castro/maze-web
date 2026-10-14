@@ -154,6 +154,8 @@ maze_web/
 │   ├── audio/              BGM 与音效
 │   ├── fonts/              NotoSansSC-Subset.ttf（216 KB，由 tools/fonts 的源字体裁出）
 │   └── rl/                 policy_*.bin 权重（客户端离线推理用）
+├── assets_web/               ★预生成的瘦身资源（audio/*.ogg + models/nailong.glb）
+│                            Web 构建时覆盖到 assets/ 上；桌面版用不到，见 3.9
 ├── third_party/raylib/     raylib 6.0 源码（内置；必须和桌面版同一版 API，见下）
 ├── server/                 排行榜后端
 │   ├── worker.js           Cloudflare Worker 实现（主）
@@ -162,7 +164,10 @@ maze_web/
 │   └── wrangler.toml       部署配置
 └── tools/
     ├── gbk2utf8.py         桌面版 GBK 源码 → UTF-8（迁移第一步）
-    ├── apply_web_port.py   25 处平台补丁（带锚点断言，可重复跑）
+    ├── apply_web_port.py   33 处平台补丁（带锚点断言，可重复跑）
+    ├── apply_web_hidpi.py   raylib Web 后端 HiDPI / 指针锁定补丁（7 处，见 3.8）
+    ├── make_web_assets.py   资源瘦身：音频转 OGG + 摈掉 glb 内嵌死贴图（见 3.9）
+    ├── apply_web_audio_ogg.py  src 里 26 处 .wav 引用 -> .ogg
     ├── make_font_subset.py 按 UI_GLYPHS 裁字体子集
     ├── fonts/              NotoSansSC-VF.ttf（17MB 源字体；故意不放 assets/，
     │                       否则 --preload-file assets 会把它整个打进 .data）
@@ -310,6 +315,62 @@ while (pDevice->webaudio.initResult == MA_BUSY) { emscripten_sleep(1); }   /* �
 **根本不需要 WebGL2**；index.html 里那句"请确认支持 WebGL2"是旧版兜底文案，
 现在页面会自己回报 `WebGL1=… WebGL2=…` 和引擎的真实报错文本。
 
+### 3.8 两个只在浏览器里才犯的错：画面糊、鼠标转不动视角
+
+**画面糊**：raylib 的 Web 后端建 canvas 时只按 CSS 像素算尺寸，没乘 `devicePixelRatio` ——
+浏览器再把这张低分辨率画布拉伸到物理像素，等于全程降采样。
+`tools/apply_web_hidpi.py`（7 处锚点）修了三件事：canvas 的 backing store 尺寸乘 dpr、
+视口/scissor 按物理像素算、`setWindowSize` 时同时同步 CSS 尺寸与 backing store。
+实测 1570x805（dpr=1.5）→ 背板 2355x1208，字和贴图一下子都锐了。
+
+**鼠标转不动视角**：raylib 的 `DisableCursor()` 在 Web 上只是**发一个 pointer lock 请求**，
+内部 `cursorHidden` 一动不动；而玩法代码用 `IsCursorHidden()` 判断"鼠标锁没锁" ——
+在浏览器里它恒为 `false`，于是视角永远拖不动。
+Web 版改成读真实状态 `WebPlatform::CursorLocked()`（即 `document.pointerLockElement != null`），
+暂停/结算时鼠标本来就是解锁的，所以语义依然正确。
+
+顺带两个浏览器规矩：指针锁定**必须由用户手势触发**，而且退出锁定后有一段冷却期 ——
+所以 `shell.html` 里是 `mousedown` → `setTimeout(relock, 0)` 再重新请求，同步立刻请求会被拒。
+
+### 3.9 首屏瘦身：index.data 17.3MB → 4.9MB
+
+首屏时长几乎就等于"下载 index.data 的时长"，而国内到 GitHub Pages 实测只有 **82 KB/s**，
+17.3MB 就是三分半。两处零感知瘦身 + 一个压缩开关：
+
+| 项 | 前 | 后 | 做了什么 |
+|---|---|---|---|
+| 音频 | 10.29 MB | 0.34 MB | 48kHz/16bit 立体声 PCM → 22050Hz Vorbis；音效单声道、bgm 保留立体声 |
+| 模型 | 3.16 MB | 1.44 MB | 摘掉 `nailong.glb` 内嵌的那张 1.76MB JPEG |
+| 打包 | — | — | `-sLZ4=1`（整包再过一道 LZ4，按需解压） |
+| **index.data** | **17,258,656 B** | **4,885,498 B** | **−72%** |
+
+两个都不是"压一压将就"：
+
+- **音频**：raylib 编译时 `SUPPORT_FILEFORMAT_OGG=1`，`LoadSound` / `LoadMusicStream` 按扩展名挑解码器，
+  所以只要把 `src` 里那 26 处 `.wav` 字面量换成 `.ogg`（`tools/apply_web_audio_ogg.py`，可重复跑）。
+  桌面版 `assets/audio` 一个字节都不动。
+- **模型**：`nailong.glb` 里内嵌的 JPEG 有 1.76MB，但 **raylib 6.0 的 `rmodels.c` 根本不读
+  bufferView 里的图**（日志表现是 `IMAGE: Data format not supported`）；真正生效的是独立的
+  `nailong_color.png`，而且 `Nailong::ApplySidecarTexture()` 是**无条件覆盖**材质贴图的。
+  也就是说这张内嵌图是纯死重量。`tools/make_web_assets.py` 直接把 `images` / `textures` / `samplers`
+  从 glTF 里摘掉、重排 bufferView，并自检每个 accessor 的字节区间没越界。
+  剥离后顶点数仍是 **36055**（和原模型一致），几何与材质零改动。
+
+还有个坑：`--lz4` **不是 emcc 的选项**（`emcc.py` 里搜不到 lz4），写进 `target_link_options` 会被当成
+未知参数悄悄丢掉；正确的是 `-sLZ4=1`，由 `link.py` 再去给 file_packager 补 `--lz4`。
+
+**国内访问慢怎么办**（本机实测，各省差异很大，仅供参考）：
+
+| 线路 | 实测速度 | 17.3MB | 4.9MB |
+|---|---|---|---|
+| github.io（现在用的） | 82 KB/s | 3.5 分钟 | ~60 秒 |
+| cdnjs（Cloudflare） | 222 KB/s | 76 秒 | ~22 秒 |
+| jsDelivr（npm） | 199 KB/s | 85 秒 | ~25 秒 |
+| npmmirror（国内） | 906 KB/s | 19 秒 | ~5 秒 |
+
+要把 `index.data` 挪到更快的 CDN，只要在 `shell.html` 里覆盖 `Module.locateFile`，
+让它对 index.data 返回别的地址即可 —— JS/wasm 仍走同源，不涉及 CORS。
+
 ---
 
 ## 四、全网排行榜
@@ -448,6 +509,18 @@ python server/local_server.py --port 8787
 **Q：帧率不如桌面版？**
 `NailongRig` 是 **CPU 软件蒙皮**，每帧重算顶点。WASM 大概是原生 60~80% 的速度。
 真嫌慢的话，把奶龙模型换成带骨骼的真 glb，让 GPU 去蒙皮 —— 那就不需要 `NailongRig` 了。
+
+**Q：画面糊 / 鼠标拖不动视角？**
+先 `Ctrl+Shift+R` 硬刷新（旧的 `index.js` 会被浏览器缓存）。然后进游戏后点一下画面，
+让浏览器授予指针锁定。原理见 3.8。
+
+**Q：完全没有音效和 BGM？**
+Web 版音频查找函数原本拼的是 Windows 反斜杠（`assets\audio\...`），浏览器 MEMFS 只把 `/`
+当分隔符，于是 26 个音效全部"找不到"、footstep 更是整段禁用 —— 已在 `apply_web_port.py`
+里统一改成正斜杠（33 处补丁）。另外浏览器要求"先有用户手势才准出声"，进游戏点一下画面即可。
+
+**Q：首屏要等很久？**
+首屏基本就是在下 `index.data`，见 3.9（已从 17.3MB 瘦到 4.9MB）。想更快就把 index.data 挪到国内 CDN。
 
 ---
 
