@@ -32,6 +32,7 @@ namespace lb
 
         std::string gBaseUrl;                   // 空 = 同域 /api
         std::string gStatus = "idle";
+        bool        gOffline = false;           // web/config.js 里 online:false 时为真
 
         // 缓存：key = "<diff>|<board>"，value = 服务端返回的行
         std::mutex gMutex;
@@ -129,6 +130,12 @@ namespace lb
             gBaseUrl = fromJs;
         }
         if (fromJs != nullptr) free((void*)fromJs);
+
+        // config.js 的 online:false -> 彻底不联网（本地 log.csv 照写不误）
+        const int online = EM_ASM_INT({
+            return (typeof window !== "undefined" && window.MAZE_ONLINE === false) ? 0 : 1;
+        });
+        gOffline = (online == 0);
     }
 
     // ---- 上传完成回调 ----
@@ -241,6 +248,8 @@ namespace lb
 
     void Submit(const ScoreRecord& rec)
     {
+        if (gOffline) { gStatus = "offline"; return; }
+
         // 规范化：字段顺序必须和服务端拼串的顺序完全一致，否则验签必挂
         char scoreBuf[32];
         char timeBuf[32];
@@ -290,6 +299,8 @@ namespace lb
 
     void RequestBoard(Difficulty d, RankBoard board, int limit)
     {
+        if (gOffline) { gStatus = "offline"; return; }
+
         const std::string key = CacheKey(d, board);
         {
             std::lock_guard<std::mutex> lock(gMutex);

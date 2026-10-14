@@ -70,7 +70,8 @@ python -c "import zipfile;zipfile.ZipFile(r'D:\emsdk\downloads\wasm-binaries.zip
 powershell -ExecutionPolicy Bypass -File tools\build_web.ps1
 ```
 
-产物在 `build/web/index.html`（外加 `index.js` / `index.wasm` / `index.data`）。
+产物在 `build/web/`：`index.html` + `index.js` + `index.wasm` + `index.data`，
+外带一份 `config.js`（后端地址 / 是否联网，**改它不用重新编译**，部署时和 index.html 放一起）。
 
 ### 2. 本地预览
 

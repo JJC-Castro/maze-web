@@ -67,6 +67,7 @@ jobs:
         run: |
           mkdir -p _site
           cp build/web/index.html build/web/index.js build/web/index.wasm build/web/index.data _site/
+          cp web/config.js _site/
 
       - name: 上传 Pages 产物
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/final-version'

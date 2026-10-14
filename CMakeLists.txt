@@ -104,6 +104,12 @@ if(EMSCRIPTEN)
         "--preload-file" "${CMAKE_CURRENT_SOURCE_DIR}/assets@assets"
         "--shell-file"   "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html"
     )
+
+    # index.html 里引的是同目录的 config.js，构建完把它放到产物旁边
+    add_custom_command(TARGET maze POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/web/config.js"
+                "$<TARGET_FILE_DIR:maze>/config.js")
 else()
     # 桌面版：直接双击 exe 就能跑，资源按相对路径找
     if(MSVC)

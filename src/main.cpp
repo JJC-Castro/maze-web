@@ -20,6 +20,7 @@ using namespace std;
 #ifdef MAZE_WEB
 #include "WebPlatform.h"    // IndexedDB 挂载：存档 / log.csv 的持久化目录
 #endif
+#include "Leaderboard.h"    // 全网榜（桌面版是空实现，调它不花钱）
 
 #include "RL/RLNet.h"
 #include "RL/RlAgent.h"
@@ -1530,6 +1531,11 @@ int main()
     // 读回旧数据是异步的，所以这里不等待 —— 不影响开局，只影响"上次的成绩还在不在"。
     web::InitFileSystem();
 #endif
+
+    // ---- 全网榜后端地址 ----
+    // 默认同域 /api（Cloudflare Pages 把 /api/* 路由到 Worker）。
+    // 想指到别的域名 / 本地 python 后端，改 web/config.js 的 apiBase，不用重新编译。
+    lb::SetBaseUrl("/api");
 
     // ---- 字体（加载失败会自动退回默认字体）----
     UIFont uiFont;

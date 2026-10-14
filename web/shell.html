@@ -68,6 +68,17 @@
   </div>
 </div>
 
+<script src="config.js"></script>
+<script>
+  // config.js 里的 MAZE_CONFIG -> C++ 侧要读的两个全局量
+  //   MAZE_API_BASE：排行榜后端基地址（Leaderboard.cpp 用 EM_ASM_PTR 读）
+  //   MAZE_ONLINE  ：false 时彻底不联网（本地 log.csv 照写）
+  (function () {
+    var cfg = window.MAZE_CONFIG || {};
+    window.MAZE_ONLINE = (cfg.online !== false);
+    window.MAZE_API_BASE = cfg.apiBase || '';
+  })();
+</script>
 <script>
   // Emscripten 的 Module 配置要在 loader 脚本之前定义
   var Module = {
