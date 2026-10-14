@@ -31,14 +31,38 @@
 | **CMake + Ninja** | 用来驱动构建（raylib 官方就这么走） |
 | **Python 3** | 只用来跑 `tools/` 下的几个脚本（转码、字体子集、本地服务器） |
 
-装 emsdk（约 1GB，国内访问 `storage.googleapis.com` 会比较慢）：
+**装 emsdk —— 两条路，`build_web.ps1` 都认。** 国内直连 `storage.googleapis.com`
+很容易掉到 17 KB/s，所以走 B 更省事（本机就是这么装的）：
+
+**A) 官方流程**
 
 ```powershell
 git clone https://github.com/emscripten-core/emsdk.git D:\emsdk
 cd D:\emsdk
-.\emsdk install latest
+.\emsdk install latest        # 这里会下 668MB 的 wasm-binaries.zip
 .\emsdk activate latest
 ```
+
+**B) 手动解包（绕开 emsdk 那个慢下载器）**
+
+```powershell
+# 668MB，建议多连接/断点续传下载
+curl.exe -L -o D:\emsdk\downloads\wasm-binaries.zip `
+  https://storage.googleapis.com/webassembly/emscripten-releases-builds/win/<releases-tag>/wasm-binaries.zip
+# 解到 upstream\（里面是 emscripten\ bin\ lib\ share\）
+python -c "import zipfile;zipfile.ZipFile(r'D:\emsdk\downloads\wasm-binaries.zip').extractall(r'D:\emsdk\upstream')"
+```
+
+`<releases-tag>` 在 `emsdk_manifest.json` / `emscripten-releases-tags.json` 里查（例如 `6.0.12`
+对应 `6e9f6885cb17a3d6c8fd488a5cff730f50aba61d`）。
+脚本会自动补一份 `.emscripten` 配置（`LLVM_ROOT` / `BINARYEN_ROOT` / `NODE_JS`），
+只要求本机有 **Python 3 + node.exe**。
+
+> 工具链装好后可以只编探针先试水：
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File tools\build_web.ps1 -ProbeOnly
+> ```
+> 探针单独验三条最容易翻车的链路（emcc / 中文字体 / 预加载资源）。
 
 ### 1. 构建
 
@@ -47,13 +71,6 @@ powershell -ExecutionPolicy Bypass -File tools\build_web.ps1
 ```
 
 产物在 `build/web/index.html`（外加 `index.js` / `index.wasm` / `index.data`）。
-
-> **想先验证工具链？** 先只编探针：
-> ```powershell
-> powershell -ExecutionPolicy Bypass -File tools\build_web.ps1 -ProbeOnly
-> ```
-> 探针会单独检查三条最容易翻车的链路（emcc / 中文字体 / 预加载资源），
-> 有任何一条挂了，就别急着编那 15000 行。
 
 ### 2. 本地预览
 
@@ -67,6 +84,26 @@ python tools\serve.py --open
 
 和桌面版完全一致：`WASD` 移动、`Shift` 奔跑、`Space` 跳跃、鼠标转视角、左键射击、
 `V` 切视角（奶龙模式）、`Tab` 锁鼠标、`ESC` 暂停。
+
+### 4. 自检（不启动游戏就能验的两件事）
+
+**a) 排行榜签名算法** —— 客户端那份 SHA-256/HMAC 是手写的。算错一个字节，成绩会被
+服务端 403 拒收，而现象是"本地 `log.csv` 好好的、就是不上榜"，极难查。所以留了靶子：
+
+```powershell
+cmake --build build\desktop --config Release --target selftest
+build\desktop\Release\selftest.exe > build\selftest_out.txt
+python tools\selftest\check.py build\selftest_out.txt
+```
+
+**b) 后端验签链路** —— 起一个临时 sqlite 后端，拿 C++ 算出来的**真签名**去打它：
+
+```powershell
+python tools\selftest\server_check.py
+```
+
+依次验：真签名被接受 / 改分数被拒(403) / 乱签名被拒 / 用时越界被拒(422) / 榜单查得到 /
+重复提交不刷榜。改服务端规则时跑一遍，能立刻发现前后端不一致。
 
 ---
 
@@ -93,9 +130,9 @@ maze_web/
 ├── assets/
 │   ├── models/             nailong.glb + 贴图
 │   ├── audio/              BGM 与音效
-│   ├── fonts/              NotoSansSC-Subset.ttf（216 KB，见下）
+│   ├── fonts/              NotoSansSC-Subset.ttf（216 KB，由 tools/fonts 的源字体裁出）
 │   └── rl/                 policy_*.bin 权重（客户端离线推理用）
-├── third_party/raylib/     raylib 5.5 源码（内置，桌面/Web 共用一份）
+├── third_party/raylib/     raylib 6.0 源码（内置；必须和桌面版同一版 API，见下）
 ├── server/                 排行榜后端
 │   ├── worker.js           Cloudflare Worker 实现（主）
 │   ├── local_server.py     纯标准库实现（本地联调 / 自建）
@@ -103,8 +140,11 @@ maze_web/
 │   └── wrangler.toml       部署配置
 └── tools/
     ├── gbk2utf8.py         桌面版 GBK 源码 → UTF-8（迁移第一步）
-    ├── apply_web_port.py   22 处平台补丁（带锚点断言，可重复跑）
+    ├── apply_web_port.py   25 处平台补丁（带锚点断言，可重复跑）
     ├── make_font_subset.py 按 UI_GLYPHS 裁字体子集
+    ├── fonts/              NotoSansSC-VF.ttf（17MB 源字体；故意不放 assets/，
+    │                       否则 --preload-file assets 会把它整个打进 .data）
+    ├── selftest/           可执行自检：SHA-256/HMAC 对照 Python + 后端验签联调
     ├── serve.py            本地静态服务器
     └── build_web.ps1       一键构建
 ```

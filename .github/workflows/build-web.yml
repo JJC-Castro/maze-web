@@ -1,0 +1,89 @@
+# ===========================================================================
+#  build-web.yml —— 云端复现 Web 版构建（不需要本机装 emsdk）
+#
+#  干三件事：
+#    1. 在 Ubuntu runner 上装 Emscripten 6.0.12（版本要和本机一致，见 README）
+#    2. emcmake + ninja 编出 index.html / .js / .wasm / .data
+#    3. 上传构建产物；在 main 分支上顺手部署到 GitHub Pages
+#
+#  注意：GitHub Pages 需要在仓库 Settings -> Pages 里把 Source 选成
+#        "GitHub Actions"，否则最后那个 deploy 步骤会报错（不影响构建）。
+# ===========================================================================
+name: build-web
+
+on:
+  push:
+    branches: [main, final-version]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装 Emscripten 6.0.12
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 6.0.12
+
+      - name: 装 ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: 环境自检
+        run: |
+          emcc --version | head -1
+          cmake --version | head -1
+          ninja --version
+
+      - name: 先编探针（工具链 / 中文字体 / 预加载，一条挂了就别编全量）
+        run: |
+          emcmake cmake -S . -B build/web -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/web --target probe
+
+      - name: 全量编译
+        run: cmake --build build/web --target maze
+
+      - name: 产物清单
+        run: ls -lh build/web/index.* build/web/probe.* 2>/dev/null || ls -lh build/web
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: maze-web
+          path: |
+            build/web/index.html
+            build/web/index.js
+            build/web/index.wasm
+            build/web/index.data
+          if-no-files-found: error
+
+      - name: 准备 Pages 目录
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/final-version'
+        run: |
+          mkdir -p _site
+          cp build/web/index.html build/web/index.js build/web/index.wasm build/web/index.data _site/
+
+      - name: 上传 Pages 产物
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/final-version'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: wasm
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/final-version'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
