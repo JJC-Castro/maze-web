@@ -17,6 +17,8 @@
   4. Account       _get_pgmptr / localtime_s -> 跨平台；log.csv 落到 IndexedDB 挂载点
   5. GameTimer     strncpy_s / _TRUNCATE -> snprintf
   6. main.cpp      权重目录 _get_pgmptr -> /assets/rl
+  7. SfxAudio / FootstepAudio  音频目录拼接用反斜杠 -> 正斜杠
+     （浏览器 MEMFS 只认 '/'；Win32 同样接受 '/'，所以这三处没加 #ifdef）
 
 注意：RlBridge.cpp（Windows 裸 Winsock）不是"打补丁"而是"换实现" ——
       Web 版编 src/RL/RlBridge_web.cpp，桌面版编 src/RL/RlBridge.cpp，见 CMakeLists。
@@ -442,7 +444,37 @@ PATCHES = [
           """                // 不能用 IsCursorHidden()：Web 后端的 DisableCursor() 只请求 pointer lock，
                 // 从不动 cursorHidden，浏览器里它恒为 false —— 视角就永远拖不动。
                 cursorLocked = web::CursorLocked();       // 跟随真实锁定状态（暂停/结算时鼠标是解锁的）""",
-          'main.cpp: 鼠标锁定状态改用 WebPlatform::CursorLocked()'),]
+          'main.cpp: 鼠标锁定状态改用 WebPlatform::CursorLocked()'),
+    # ------------------------------------------- SfxAudio / FootstepAudio 路径
+    # AUDIO-SEP：音频查找函数拼的是 Windows 反斜杠（"assets\\audio\\" + 文件名），
+    # 浏览器 MEMFS 只把 '/' 当分隔符，所以 Web 版音效一直哑巴（footstep 更是整段禁用）。
+    # 正斜杠在 Win32 文件 API 上同样合法、桌面版语义零变化，故这三处没加 #ifdef
+    # （见文件头「已处理的平台差异」第 7 条）。
+    Patch('SfxAudio.cpp',
+          'std::string("assets\\\\audio\\\\") + fileName;',
+          'std::string("assets/audio/") + fileName;',
+          'SfxAudio.cpp: 音频相对目录 \\ -> /'),
+    Patch('SfxAudio.cpp',
+          'std::string("codes\\\\assets\\\\audio\\\\") + fileName;',
+          'std::string("codes/assets/audio/") + fileName;',
+          'SfxAudio.cpp: 工程相对目录 \\ -> /'),
+    Patch('SfxAudio.cpp',
+          'return directory + "\\\\" + child;',
+          'return directory + "/" + child;',
+          'SfxAudio.cpp: JoinPath 分隔符 \\ -> /'),
+    Patch('FootstepAudio.cpp',
+          'std::string("assets\\\\audio\\\\") + fileName;',
+          'std::string("assets/audio/") + fileName;',
+          'FootstepAudio.cpp: 音频相对目录 \\ -> /'),
+    Patch('FootstepAudio.cpp',
+          'std::string("codes\\\\assets\\\\audio\\\\") + fileName;',
+          'std::string("codes/assets/audio/") + fileName;',
+          'FootstepAudio.cpp: 工程相对目录 \\ -> /'),
+    Patch('FootstepAudio.cpp',
+          'return directory + "\\\\" + child;',
+          'return directory + "/" + child;',
+          'FootstepAudio.cpp: JoinPath 分隔符 \\ -> /'),
+]
 
 
 def apply(check_only=False):

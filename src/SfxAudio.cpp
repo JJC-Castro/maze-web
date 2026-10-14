@@ -22,7 +22,7 @@ namespace
             return directory + child;
         }
 
-        return directory + "\\" + child;
+        return directory + "/" + child;
     }
 
     // 生成 [-range, range] 范围内的随机浮点数。
@@ -68,9 +68,9 @@ std::string SfxAudio::FindAssetPath(const char* fileName)
     }
 
     const std::string directRelative =
-        std::string("assets\\audio\\") + fileName;
+        std::string("assets/audio/") + fileName;
     const std::string projectRelative =
-        std::string("codes\\assets\\audio\\") + fileName;
+        std::string("codes/assets/audio/") + fileName;
 
     for (const std::string& root : roots)
     {
@@ -163,31 +163,31 @@ bool SfxAudio::Load()
     }
 
     bool anyLoaded = false;
-    anyLoaded = LoadBank(goldPickup_, "treasure_gold.wav") || anyLoaded;
-    anyLoaded = LoadBank(attackPickup_, "treasure_blue.wav") || anyLoaded;
-    anyLoaded = LoadBank(healPickup_, "treasure_red.wav") || anyLoaded;
-    anyLoaded = LoadBank(playerDamage_, "player_damage.wav") || anyLoaded;
-    anyLoaded = LoadBank(orbFire_, "orb_fire.wav") || anyLoaded;
-    anyLoaded = LoadBank(sprintStart_, "player_sprint_start.wav") || anyLoaded;
-    anyLoaded = LoadBank(playerDeath_, "player_death.wav") || anyLoaded;
-    anyLoaded = LoadBank(playerJump_, "player_jump.wav") || anyLoaded;
-    anyLoaded = LoadBank(slowZoneEnter_, "slow_zone_enter.wav") || anyLoaded;
-    anyLoaded = LoadBank(mineExplode_, "mine_explode.wav") || anyLoaded;
-    anyLoaded = LoadBank(playerFootstep_, "player_footstep.wav") || anyLoaded;
-    anyLoaded = LoadBank(playerFootstepSticky_, "player_footstep_sticky.wav") || anyLoaded;
-    anyLoaded = LoadBank(playerLand_, "player_land.wav") || anyLoaded;
-    anyLoaded = LoadBank(playerPant_, "player_pant.wav") || anyLoaded;
-    anyLoaded = LoadBank(enemyDefeat_, "enemy_defeat.wav") || anyLoaded;
-    anyLoaded = LoadBank(gameStart_, "game_start.wav") || anyLoaded;
-    anyLoaded = LoadBank(gameClear_, "game_clear.wav") || anyLoaded;
-    anyLoaded = LoadBank(uiClick_, "ui_click.wav") || anyLoaded;
-    anyLoaded = LoadBank(nailongLaugh_, "nailong_laugh.wav") || anyLoaded;
-    anyLoaded = LoadBank(nailongChirp_, "nailong_chirp.wav") || anyLoaded;
+    anyLoaded = LoadBank(goldPickup_, "treasure_gold.ogg") || anyLoaded;
+    anyLoaded = LoadBank(attackPickup_, "treasure_blue.ogg") || anyLoaded;
+    anyLoaded = LoadBank(healPickup_, "treasure_red.ogg") || anyLoaded;
+    anyLoaded = LoadBank(playerDamage_, "player_damage.ogg") || anyLoaded;
+    anyLoaded = LoadBank(orbFire_, "orb_fire.ogg") || anyLoaded;
+    anyLoaded = LoadBank(sprintStart_, "player_sprint_start.ogg") || anyLoaded;
+    anyLoaded = LoadBank(playerDeath_, "player_death.ogg") || anyLoaded;
+    anyLoaded = LoadBank(playerJump_, "player_jump.ogg") || anyLoaded;
+    anyLoaded = LoadBank(slowZoneEnter_, "slow_zone_enter.ogg") || anyLoaded;
+    anyLoaded = LoadBank(mineExplode_, "mine_explode.ogg") || anyLoaded;
+    anyLoaded = LoadBank(playerFootstep_, "player_footstep.ogg") || anyLoaded;
+    anyLoaded = LoadBank(playerFootstepSticky_, "player_footstep_sticky.ogg") || anyLoaded;
+    anyLoaded = LoadBank(playerLand_, "player_land.ogg") || anyLoaded;
+    anyLoaded = LoadBank(playerPant_, "player_pant.ogg") || anyLoaded;
+    anyLoaded = LoadBank(enemyDefeat_, "enemy_defeat.ogg") || anyLoaded;
+    anyLoaded = LoadBank(gameStart_, "game_start.ogg") || anyLoaded;
+    anyLoaded = LoadBank(gameClear_, "game_clear.ogg") || anyLoaded;
+    anyLoaded = LoadBank(uiClick_, "ui_click.ogg") || anyLoaded;
+    anyLoaded = LoadBank(nailongLaugh_, "nailong_laugh.ogg") || anyLoaded;
+    anyLoaded = LoadBank(nailongChirp_, "nailong_chirp.ogg") || anyLoaded;
 
     // ---- 背景音乐：四个难度各一首，流式加载并打开循环 ----
     // 找不到文件只是没有背景音乐，不影响其它音效与游戏运行
     const char* backgroundFiles[SfxConfig::BACKGROUND_COUNT] = {
-        "bgm_easy.wav", "bgm_normal.wav", "bgm_hard.wav", "bgm_hell.wav"
+        "bgm_easy.ogg", "bgm_normal.ogg", "bgm_hard.ogg", "bgm_hell.ogg"
     };
     for (int i = 0; i < SfxConfig::BACKGROUND_COUNT; ++i)
     {

@@ -25,7 +25,7 @@ namespace
             return directory + child;
         }
 
-        return directory + "\\" + child;
+        return directory + "/" + child;
     }
 }
 
@@ -64,9 +64,9 @@ std::string FootstepAudio::FindAssetPath(const char* fileName)
     }
 
     const std::string directRelative =
-        std::string("assets\\audio\\") + fileName;
+        std::string("assets/audio/") + fileName;
     const std::string projectRelative =
-        std::string("codes\\assets\\audio\\") + fileName;
+        std::string("codes/assets/audio/") + fileName;
 
     for (const std::string& root : roots)
     {
@@ -102,8 +102,8 @@ bool FootstepAudio::Load()
         return false;
     }
 
-    const std::string patrolPath = FindAssetPath("footstep_patrol.wav");
-    const std::string chaserPath = FindAssetPath("footstep_chaser.wav");
+    const std::string patrolPath = FindAssetPath("footstep_patrol.ogg");
+    const std::string chaserPath = FindAssetPath("footstep_chaser.ogg");
     if (patrolPath.empty() || chaserPath.empty())
     {
         TraceLog(LOG_WARNING, "Footstep audio disabled: wav asset not found.");

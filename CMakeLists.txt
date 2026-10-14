@@ -90,6 +90,25 @@ if(EMSCRIPTEN)
 
     target_link_libraries(maze PRIVATE "-sUSE_GLFW=3")
 
+    # 组装 Web 用的资源目录（不污染仓库，直接组到 build 目录里）：
+    #   audio  -> tools/make_web_assets.py 生成的瘦身版（48kHz 立体声 PCM 降到
+    #             22kHz 单声道/BGM 立体声，10.3MB -> 3.4MB，听感基本无损）
+    #   其余   -> 原样复制
+    # 桌面版完全不受影响：桌面版 preload 的还是原版 assets/。
+    set(MAZE_WEB_ASSETS "${CMAKE_CURRENT_BINARY_DIR}/web_assets")
+    add_custom_target(maze_web_assets
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${MAZE_WEB_ASSETS}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets_web/audio"   "${MAZE_WEB_ASSETS}/audio"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets/models"      "${MAZE_WEB_ASSETS}/models"
+        # assets_web/models 里是瘦身过的模型（内嵌死贴图已摘），覆盖上去。
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets_web/models" "${MAZE_WEB_ASSETS}/models"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts"       "${MAZE_WEB_ASSETS}/fonts"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets/rl"          "${MAZE_WEB_ASSETS}/rl"
+        COMMENT "组装 Web 资源目录（音频用瘦身版）"
+        VERBATIM
+    )
+    add_dependencies(maze maze_web_assets)
+
     target_link_options(maze PRIVATE
         "-sUSE_GLFW=3"
         "-sALLOW_MEMORY_GROWTH=1"       # 迷宫 + 模型 + 音频，16MB 默认堆不够
@@ -112,7 +131,12 @@ if(EMSCRIPTEN)
         "-sASYNCIFY_IGNORE_INDIRECT"
         "-sFETCH=1"                     # 全网榜：emscripten_fetch 走 XHR
         "-lidbfs.js"                    # IndexedDB 持久化（log.csv / 存档）
-        "--preload-file" "${CMAKE_CURRENT_SOURCE_DIR}/assets@assets"
+        # 首屏时长 = 下载 index.data 的时长（国内到 GitHub Pages 实测只有 82KB/s）。
+        # -sLZ4=1：整个资源包先 LZ4 压一道，浏览器下完再解压，能省两成左右。
+        # 注意 --preload-file 只能在 target_link_options 里出现一次（CMake 会把
+        # 重复的链接选项去重），所以资源统一指向构建期组装出来的 web_assets/。
+        "-sLZ4=1"
+        "--preload-file" "${MAZE_WEB_ASSETS}@assets"
         "--shell-file"   "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html"
     )
 
