@@ -14,6 +14,7 @@
 // ===========================================================================
 #include "raylib.h"
 
+#include <math.h>       // cosf / sinf
 #include <stdio.h>
 #include <string.h>
 

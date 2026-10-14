@@ -1,4 +1,4 @@
-# ===========================================================================
+﻿# ===========================================================================
 #  build_web.ps1 —— 构建 Web 版（Emscripten）
 #
 #  两种 emsdk 布局都认：
@@ -20,7 +20,9 @@ param(
     [switch]$Clean
 )
 
-$ErrorActionPreference = 'Stop'
+# 注意：不能用 'Stop' —— 原生命令（emcc / cmake / ninja）往 stderr 写一行普通信息，
+# PS 5.1 就会当成 NativeCommandError 直接中断脚本。改成 Continue + 显式查 $LASTEXITCODE。
+$ErrorActionPreference = 'Continue'
 $Root = Split-Path -Parent $PSScriptRoot
 
 function Find-Exe([string]$Name, [string[]]$Candidates) {
@@ -64,10 +66,17 @@ if (Test-Path $emccPy) {
         "NODE_JS = '$nodeFwd'"
     ) -join "`r`n"
     Set-Content -LiteralPath $cfg -Value $cfgText -Encoding ASCII
+    # emcc.exe 是个 24KB 的启动器，它自己按 PATH 找 python：得先把真 python 放到最前面，
+    # 否则会撞上 Windows 那个"python 未安装"的应用商店占位符。
+    $env:PATH = (Split-Path $PythonExe) + ';' + $env:PATH
     $env:EM_CONFIG = $cfg
     $env:PATH = (Join-Path $up 'emscripten') + ';' + (Join-Path $up 'bin') + ';' + $env:PATH
-    $emcc = Join-Path $up 'emscripten\emcc.bat'
-    if (-not (Test-Path $emcc)) { throw "缺 $emcc —— upstream 解包不完整？" }
+    # 6.0.12 的 releases 包里给的是原生 emcc.exe（老版本才是 emcc.bat）
+    foreach ($cand in @('emcc.exe', 'emcc.bat')) {
+        $p = Join-Path $up ("emscripten\" + $cand)
+        if (Test-Path $p) { $emcc = $p; break }
+    }
+    if (-not $emcc) { throw "emcc.exe / emcc.bat 都没有 —— upstream 解包不完整？" }
     Write-Host "      布局 B（手动解包）：$emcc" -ForegroundColor DarkGray
 }
 else {

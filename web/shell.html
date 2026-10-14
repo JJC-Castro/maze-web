@@ -125,6 +125,8 @@
   // 未捕获的脚本错误也走同一套兜底 UI
   window.addEventListener('error', function (e) { showFail(e.message); });
 </script>
-<script async src="index.js"></script>
+<!-- 下面这个占位符会被 Emscripten 换成当前目标的 loader（index.js / probe.js），
+     它自带完整的 <script> 标签，所以这里不要再套一层 -->
+{{{ SCRIPT }}}
 </body>
 </html>
