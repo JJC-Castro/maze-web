@@ -54,6 +54,16 @@ set(MAZE_SOURCES
     src/RL/RlWalker.cpp
 )
 
+
+add_executable(maze ${MAZE_SOURCES})
+target_include_directories(maze PRIVATE src)
+# raylib 的头文件（raylib.h / raymath.h）在源码树里，显式加进来，
+# 不依赖 raylib 自己的 target 是否把 BUILD_INTERFACE 传出来
+target_include_directories(maze PRIVATE third_party/raylib/src)
+
+# 真正把 raylib 链进来（桌面 = 源码静态库；Web = emcc 静态库）
+target_link_libraries(maze PRIVATE raylib)
+
 # ---------------------------------------------------------------------------
 #  RlBridge 换实现：
 #    桌面版 = RlBridge.cpp      （Windows 裸 Winsock 的 TCP 服务端）
@@ -65,9 +75,6 @@ if(EMSCRIPTEN)
 else()
     target_sources(maze PRIVATE src/RL/RlBridge.cpp)
 endif()
-
-add_executable(maze ${MAZE_SOURCES})
-target_include_directories(maze PRIVATE src)
 
 # ---------------------------------------------------------------------------
 #  Web（Emscripten）
