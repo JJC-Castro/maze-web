@@ -11,8 +11,9 @@ probe.html
 probe.js
 
 # ---- 生成物：由 tools/ 的脚本产出，不入库 ----
-# （NotoSansSC-VF.ttf 是 17MB 的源字体，克隆下来自己跑 make_font_subset.py 生成子集即可）
-assets/fonts/NotoSansSC-VF.ttf
+# （tools/fonts/NotoSansSC-VF.ttf 是 17MB 的源字体：故意放在 assets/ 外面，
+#   否则 --preload-file assets 会把它整个打进 .data。自己下载后跑 make_font_subset.py 生成子集即可）
+tools/fonts/NotoSansSC-VF.ttf
 
 # ---- 后端本地库 ----
 server/leaderboard.db

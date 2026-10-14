@@ -16,7 +16,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC_FONT = os.path.join(ROOT, 'assets', 'fonts', 'NotoSansSC-VF.ttf')
+SRC_FONT = os.path.join(ROOT, 'tools', 'fonts', 'NotoSansSC-VF.ttf')
 OUT_FONT = os.path.join(ROOT, 'assets', 'fonts', 'NotoSansSC-Subset.ttf')
 CONFIG = os.path.join(ROOT, 'src', 'Config.h')
 
@@ -49,7 +49,7 @@ def collect_glyphs():
 
 def main():
     if not os.path.isfile(SRC_FONT):
-        raise SystemExit('缺源字体：%s\n先下载 NotoSansSC-VF.ttf 放进 assets/fonts/' % SRC_FONT)
+        raise SystemExit('缺源字体：%s\n先下载 NotoSansSC-VF.ttf 放进 tools/fonts/' % SRC_FONT)
 
     try:
         from fontTools import subset
