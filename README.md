@@ -55,6 +55,19 @@ python -c "import zipfile;zipfile.ZipFile(r'D:\emsdk\downloads\wasm-binaries.zip
 
 `<releases-tag>` 在 `emsdk_manifest.json` / `emscripten-releases-tags.json` 里查（例如 `6.0.12`
 对应 `6e9f6885cb17a3d6c8fd488a5cff730f50aba61d`）。
+本机实测（2026-10，Windows）：
+
+| 项 | 值 |
+|---|---|
+| Emscripten | `6.0.12-git`（releases tag `6e9f6885cb17a3d6c8fd488a5cff730f50aba61d`） |
+| `wasm-binaries.zip` | 700,727,317 B，sha256 `51ac2e51a2c6eeba09fa04418496750662b5c1f022665814b0ee8f557c8328c9` |
+| 解包后目录 | `<zip>\install\{bin,emscripten,lib}` → 要挪成 `upstream\{bin,emscripten,lib}` |
+| node | `E:\nodejs\node.exe`（v24.x，emcc 的 JS 后端） |
+| 产物 | `index.wasm` 1.16 MB + `index.data` 17.3 MB（音效/模型/字体/RL 权重预加载）+ `index.js` 210 KB |
+
+> 6.x 的 releases 包里是原生 `emcc.exe`（不是老版本的 `emcc.bat`），它是个 24KB 启动器，
+> 按 PATH 找 `python` —— 所以要把真 python 的目录放在 PATH 最前面，否则会撞上 Windows
+> "python 未安装"的应用商店占位符。`tools/build_web.ps1` 已经处理好了。
 脚本会自动补一份 `.emscripten` 配置（`LLVM_ROOT` / `BINARYEN_ROOT` / `NODE_JS`），
 只要求本机有 **Python 3 + node.exe**。
 
