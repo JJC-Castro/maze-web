@@ -1,0 +1,15 @@
+{
+  "name": "maze-leaderboard",
+  "private": true,
+  "version": "1.0.0",
+  "description": "3D 迷宫全网排行榜后端（Cloudflare Worker + D1）",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "schema": "wrangler d1 execute maze-leaderboard --file=schema.sql --remote",
+    "schema:local": "wrangler d1 execute maze-leaderboard --file=schema.sql --local"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

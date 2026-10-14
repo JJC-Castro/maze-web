@@ -1,0 +1,24 @@
+# ===========================================================================
+#  wrangler.toml —— Cloudflare Worker 部署配置
+#
+#  一次性准备：
+#    1. npm install -g wrangler
+#    2. wrangler login
+#    3. wrangler d1 create maze-leaderboard     # 把返回的 database_id 填到下面
+#    4. wrangler d1 execute maze-leaderboard --file=server/schema.sql --remote
+#    5. wrangler deploy
+#
+#  部署完把 Worker 域名填到 web/config.js 的 MAZE_API_BASE（或者让 Pages
+#  用 /api/* 路由转发过来，那就什么都不用改）。
+# ===========================================================================
+name = "maze-leaderboard"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "maze-leaderboard"
+database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+
+[observability]
+enabled = true

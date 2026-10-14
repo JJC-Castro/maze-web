@@ -1,0 +1,36 @@
+# ---- 构建产物 ----
+build/
+out/
+*.o
+*.wasm
+*.data
+*.wasm.map
+index.html
+index.js
+probe.html
+probe.js
+
+# ---- 生成物：由 tools/ 的脚本产出，不入库 ----
+# （NotoSansSC-VF.ttf 是 17MB 的源字体，克隆下来自己跑 make_font_subset.py 生成子集即可）
+assets/fonts/NotoSansSC-VF.ttf
+
+# ---- 后端本地库 ----
+server/leaderboard.db
+server/.wrangler/
+server/node_modules/
+
+# ---- 编辑器 / 系统 ----
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+desktop.ini
+
+# ---- Python ----
+__pycache__/
+*.pyc
+
+# ---- 运行时日志 ----
+log.csv

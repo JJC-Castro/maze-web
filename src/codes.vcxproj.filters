@@ -1,0 +1,170 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="源文件">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="头文件">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Enemy.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="FootstepAudio.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SfxAudio.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Entity.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="UIFont.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Menu.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GameTimer.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Account.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="TextInput.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Nailong.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="NailongRig.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="TPCamera.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Maze.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Player.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Treasure.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Save.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Config.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Enemy.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="FootstepAudio.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SfxAudio.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Entity.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="GameTimer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Account.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="TextInput.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Nailong.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="NailongRig.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="TPCamera.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Maze.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Menu.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Player.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="UIFont.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Treasure.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="json.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Save.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\assets\audio\footstep_chaser.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\footstep_patrol.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\enemy_defeat.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\game_clear.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\game_start.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\orb_fire.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\player_damage.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\player_death.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\player_jump.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\player_sprint_start.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\treasure_blue.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\treasure_gold.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\treasure_red.wav">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\assets\audio\ui_click.wav">
+      <Filter>资源文件</Filter>
+    </None>
+  </ItemGroup>
+</Project>
