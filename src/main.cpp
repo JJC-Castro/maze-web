@@ -79,6 +79,12 @@ static bool IsAtExit(const Maze& maze, const Player& player)
 // 失败就返回 false，伙伴自动退化成“贴在玩家身前 3m”，绝不会崩。
 static std::vector<int> g_companionDist;
 
+// 伙伴当前正在走的“下一格”：只有走到这一格中心、且没超出 3~5m 带，
+// 才推进到下一格。推进以格子中心为单位 = 它永远沿通路一格格走，
+// 不会像直线插值那样切墙角（上一版看起来“不走正确的路”就是这个原因）。
+static int   g_companionTgGx = -1;
+static int   g_companionTgGy = -1;
+
 static int CompanionDistAt(const std::vector<int>& dist, int w, int h, int gx, int gy)
 {
     if (gx < 0 || gy < 0 || gx >= w || gy >= h) return -2;   // 越界：不可能等于 d-1（d>=1）
@@ -1483,6 +1489,8 @@ int main()
             companionPos = Vector3{ 0.0f, 0.0f, 0.0f };
             companionFireTimer = 0.0f;
             companionFieldTimer = 0.0f;
+            g_companionTgGx = -1;
+            g_companionTgGy = -1;
             hurtSpeedTimer = 0.0f;
             killSatietyScore = 0;
         }
@@ -2188,6 +2196,8 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
                 rogue.companionActive = true;
                 rogue.companionFireTimer = ROGUE_COMPANION_FIRE_SECONDS;
                 rogue.companionFieldTimer = 0.0f;
+                g_companionTgGx = -1;
+                g_companionTgGy = -1;
                 if (player)
                 {
                     rogue.companionPos = player->GetFeetPosition();
@@ -2360,6 +2370,8 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
             // 避免拿上一层的旧坐标去寻路 / 开火（上一版就是在这里出的事）
             g_companionDist.clear();
             rogue.companionFieldTimer = 0.0f;
+            g_companionTgGx = -1;
+            g_companionTgGy = -1;
             rogue.companionFireTimer = ROGUE_COMPANION_FIRE_SECONDS;
             if (player != nullptr)
             {
@@ -4364,56 +4376,86 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
                                                  feet.z - fwd.z * 2.0f };
                 rogue.companionPos.y = GROUND_Y + 0.3f;
 
-                // (3) 目标：从玩家所在格沿距离场梯度往终点方向走 3~5m 的那一格
+                // (3) 伙伴自己的格 + 它比玩家“离终点更近几格”
+                //     距离场就是“这一格到终点还要走几格”，拿它当尺子比出谁在前面。
+                //     伙伴只在没超出 3~5m 带时才往前推进一格，且目标是格子中心。
                 int pgx = 0;
                 int pgy = 0;
                 maze->WorldToGrid(feet, pgx, pgy);
-                Vector3 goal{ feet.x, GROUND_Y + 0.3f, feet.z };
+
+                int cgx = 0;
+                int cgy = 0;
+                maze->WorldToGrid(rogue.companionPos, cgx, cgy);
+
+                const float compY = GROUND_Y + 0.3f;
+                const int dP = CompanionDistAt(g_companionDist, cw, ch, pgx, pgy);
+                const int dC = CompanionDistAt(g_companionDist, cw, ch, cgx, cgy);
+                const int maxLeadCells = (int)(ROGUE_COMPANION_AHEAD / CELL_SIZE);   // 5m / 2m = 2 格
+
+                Vector3 goal{ feet.x, compY, feet.z };
                 bool goalOk = false;
-                if (!g_companionDist.empty() && maze->grid.isInBounds(pgx, pgy))
+
+                if (dC >= 0)
                 {
-                    const size_t pidx = ((size_t)pgy * (size_t)cw) + (size_t)pgx;
-                    if (pidx < g_companionDist.size() && g_companionDist[pidx] > 0)
+                    // 到当前目标格中心了吗？（只比地面的 x/z）
+                    bool arrived = (g_companionTgGx < 0) || (g_companionTgGy < 0) ||
+                                   !maze->grid.isInBounds(g_companionTgGx, g_companionTgGy) ||
+                                   !maze->canWalk(g_companionTgGx, g_companionTgGy);
+                    if (!arrived)
                     {
-                        int gx = pgx;
-                        int gy = pgy;
-                        float walked = 0.0f;
-                        while (walked + CELL_SIZE <= ROGUE_COMPANION_AHEAD)
-                        {
-                            const int d = CompanionDistAt(g_companionDist, cw, ch, gx, gy);
-                            if (d <= 1) break;                  // 已经站在终点格上了
-                            int nx = gx;
-                            int ny = gy;
-                            if (CompanionDistAt(g_companionDist, cw, ch, gx + 1, gy) == d - 1)      nx = gx + 1;
-                            else if (CompanionDistAt(g_companionDist, cw, ch, gx - 1, gy) == d - 1) nx = gx - 1;
-                            else if (CompanionDistAt(g_companionDist, cw, ch, gx, gy + 1) == d - 1) ny = gy + 1;
-                            else if (CompanionDistAt(g_companionDist, cw, ch, gx, gy - 1) == d - 1) ny = gy - 1;
-                            else break;
-                            gx = nx;
-                            gy = ny;
-                            walked += CELL_SIZE;
-                        }
-                        const Vector3 cell = maze->GridToWorld(gx, gy);
-                        goal = Vector3{ cell.x, GROUND_Y + 0.3f, cell.z };
-                        goalOk = true;
+                        const Vector3 tc = maze->GridToWorld(g_companionTgGx, g_companionTgGy);
+                        const float tgdx = tc.x - rogue.companionPos.x;
+                        const float tgdz = tc.z - rogue.companionPos.z;
+                        arrived = (tgdx * tgdx + tgdz * tgdz) < 0.09f;   // 0.3m 内算到
                     }
+
+                    // 有没有跑出 3~5m 带：拿不到玩家格（玩家穿墙时）就用直线距离兜底
+                    const bool tooFarAhead = (dP >= 0)
+                        ? ((dP - dC) >= maxLeadCells)
+                        : (Vector3Distance(rogue.companionPos, feet) > (ROGUE_COMPANION_AHEAD + 3.0f));
+
+                    if (arrived && !tooFarAhead)
+                    {
+                        int nx = cgx;
+                        int ny = cgy;
+                        if (dC > 0)                                  // dC == 0：它已经站在终点格上了
+                        {
+                            if (CompanionDistAt(g_companionDist, cw, ch, cgx + 1, cgy) == dC - 1)      nx = cgx + 1;
+                            else if (CompanionDistAt(g_companionDist, cw, ch, cgx - 1, cgy) == dC - 1) nx = cgx - 1;
+                            else if (CompanionDistAt(g_companionDist, cw, ch, cgx, cgy + 1) == dC - 1) ny = cgy + 1;
+                            else if (CompanionDistAt(g_companionDist, cw, ch, cgx, cgy - 1) == dC - 1) ny = cgy - 1;
+                        }
+                        g_companionTgGx = nx;
+                        g_companionTgGy = ny;
+                    }
+
+                    const Vector3 cell = maze->GridToWorld(g_companionTgGx, g_companionTgGy);
+                    goal = Vector3{ cell.x, compY, cell.z };
+                    goalOk = true;
+                }
+                else
+                {
+                    // 伙伴自己站在非通路格上（读档 / 换层残留）：丢掉旧目标从头来
+                    g_companionTgGx = -1;
+                    g_companionTgGy = -1;
                 }
                 if (!goalOk)                                     // 兵底：直线贴在玩家身前 3m
-                    goal = Vector3{ feet.x + fwd.x * 3.0f, GROUND_Y + 0.3f,
-                                    feet.z + fwd.z * 3.0f };
+                    goal = Vector3{ feet.x + fwd.x * 3.0f, compY, feet.z + fwd.z * 3.0f };
 
-                // (4) 平滑挪向目标（略快于玩家，保证一直在前面）
+                // (4) 一格格朝目标格中心挪：沿格子中心走 = 永远贴着通路；
+                //     掉到玩家后面就按冲刺速度追，否则吊不住也带不了路
                 const Vector3 cdelta = Vector3Subtract(goal, rogue.companionPos);
                 const float cdist = sqrtf(cdelta.x * cdelta.x + cdelta.z * cdelta.z);
-                if (cdist > 0.05f)
+                if (cdist > 0.02f)
                 {
-                    const float maxStep = WALKSPEED * 1.6f * GetFrameTime();
+                    const float moveSpeed = (dC > dP) ? (SPRINTSPEED * 1.5f) : (WALKSPEED * 1.6f);
+                    const float maxStep = moveSpeed * GetFrameTime();
                     const float k = (cdist > maxStep) ? (maxStep / cdist) : 1.0f;
                     rogue.companionPos.x += cdelta.x * k;
                     rogue.companionPos.z += cdelta.z * k;
                 }
 
-                // (5) 每 ROGUE_COMPANION_FIRE_SECONDS 秒朝 15m 内最近的怪打一发（不花玩家子弹）
+// (5) 每 ROGUE_COMPANION_FIRE_SECONDS 秒朝 15m 内最近的怪打一发（不花玩家子弹）
                 rogue.companionFireTimer -= GetFrameTime();
                 if (rogue.companionFireTimer <= 0.0f)
                 {
