@@ -18,6 +18,7 @@ tools/fonts/NotoSansSC-VF.ttf
 # ---- 后端本地库 ----
 server/leaderboard.db
 server/.wrangler/
+server/pages/.wrangler/      # Pages 项目也有自己的 wrangler 缓存
 server/node_modules/
 
 # ---- 编辑器 / 系统 ----
