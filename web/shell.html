@@ -83,6 +83,9 @@
   // 引擎最后一条报错。abort 时页面上要显示它本身，而不是我瞎猜的原因
   var lastErr = '';
 
+  // 引擎是否已经跑起来：跑起来之后就不再拿全屏遮罩把"能玩的游戏"盖成"启动失败"
+  var engineUp = false;
+
   // config.js 里的 MAZE_CONFIG -> C++ 侧要读的两个全局量
   //   MAZE_API_BASE：排行榜后端基地址（Leaderboard.cpp 用 EM_ASM_PTR 读）
   //   MAZE_ONLINE  ：false 时彻底不联网（本地 log.csv 照写）
@@ -114,6 +117,7 @@
       // 运行时起来了就把遮罩淡出，交给 raylib 接管
       setProgress(1);
       setStatus('准备就绪');
+      engineUp = true;
       var s = document.getElementById('splash');
       s.classList.add('hidden');
       setTimeout(function () { s.style.display = 'none'; }, 500);
@@ -180,20 +184,73 @@
   //   另外：游戏里的 Tab 仍然可以正常解锁/锁定（键盘事件也算用户手势）。
   (function () {
     var cv = document.getElementById('canvas');
-    function relock() {
-      if (document.pointerLockElement === cv) return;       // 已经锁着就别管
-      if (Module.mazeWantPointerLock !== true) return;      // 游戏没想锁定 -> 别插手
-      try { cv.requestPointerLock(); } catch (e) { /* 退出锁定后的冷却期内会失败，下次点击再试 */ }
+
+    // ⚠ 新版浏览器的 requestPointerLock() 返回 Promise：失败是**异步**拒绝，try/catch 抓不住，
+    //   于是它变成"未捕获的 Promise 拒绝"，被下面的兜底 UI 误报成
+    //   "引擎启动失败：Pointer lock cannot be acquired immediately after the user has exited the lock"
+    //   —— 游戏其实好着呢，只是那一瞬鼠标没锁上。
+    //   最容易撞上的操作：管理员模式里从暂停菜单直接跳层（解锁后立刻又要锁，撞上 1.25s 冷却）。
+    //   所以先从源头兜住：无论谁调 requestPointerLock（raylib 的 emscripten_request_pointerlock
+    //   也算），都不会再产生未捕获拒绝。
+    if (window.HTMLCanvasElement && HTMLCanvasElement.prototype.requestPointerLock) {
+      var origLock = HTMLCanvasElement.prototype.requestPointerLock;
+      HTMLCanvasElement.prototype.requestPointerLock = function () {
+        var p;
+        try { p = origLock.apply(this, arguments); } catch (e) { return; }
+        if (p && typeof p.catch === 'function') {
+          p.catch(function () { /* 冷却期内被拒是浏览器的硬规定，正常 */ });
+        }
+        return p;
+      };
     }
+
+    var COOLDOWN_MS = 1400;       // 浏览器规定：刚退出锁定后约 1.25s 内不许再上锁
+    var lastLost = 0;
+    var timer = null;
+    var tries = 0;
+
+    function nowMs() {
+      return (window.performance && performance.now) ? performance.now() : Date.now();
+    }
+    function scheduleRetry() {
+      if (tries >= 8) { return; }                  // 最多补 8 次，别死循环
+      tries++;
+      clearTimeout(timer);
+      timer = setTimeout(relock, 350);
+    }
+    function relock() {
+      if (document.pointerLockElement === cv) { tries = 0; return; }        // 已经锁着
+      if (Module.mazeWantPointerLock !== true) { tries = 0; return; }       // 游戏没想锁定 -> 别插手
+      if (nowMs() - lastLost < COOLDOWN_MS) { scheduleRetry(); return; }    // 冷却没到，等一会儿再补
+      var p;
+      try { p = cv.requestPointerLock(); } catch (e) { scheduleRetry(); return; }
+      if (p && typeof p.catch === 'function') { p.catch(function () { scheduleRetry(); }); }
+    }
+
+    document.addEventListener('pointerlockchange', function () {
+      if (document.pointerLockElement === cv) { tries = 0; } else { lastLost = nowMs(); }
+    });
+    document.addEventListener('pointerlockerror', function () { lastLost = nowMs(); scheduleRetry(); });
     cv.addEventListener('mousedown', function () { setTimeout(relock, 0); });
   })();
 
-  // 未捕获的脚本错误 / Promise 崩溃也走同一套兜底 UI
+  // 未捕获的脚本错误 / Promise 拒绝也走兜底 UI，但有两条底线：
+  //   1) 指针锁定被拒是**正常现象**（浏览器强制的冷却期），不是引擎故障 —— 直接忽略；
+  //   2) 引擎已经跑起来之后，别再用全屏遮罩把能玩的游戏盖成"启动失败"。
+  function isPointerLockNoise(msg) {
+    return /pointer\s*lock|exited the lock/i.test(String(msg || ''));
+  }
+  function reportRuntime(kind, what) {
+    var msg = String(what || '') || lastErr || '（无错误文本）';
+    if (isPointerLockNoise(msg)) { console.warn('[maze] 忽略指针锁定拒绝：', msg); return; }
+    if (engineUp) { console.error('[maze] ' + kind + '（游戏还在跑，不弹遮罩）：', msg); return; }
+    showFail(msg);
+  }
   window.addEventListener('error', function (e) {
-    showFail(e.message || (e.target && (e.target.src || e.target.href)) || 'script error');
+    reportRuntime('error', e.message || (e.target && (e.target.src || e.target.href)) || 'script error');
   }, true);
   window.addEventListener('unhandledrejection', function (e) {
-    showFail('unhandledrejection: ' + ((e.reason && e.reason.message) || e.reason));
+    reportRuntime('unhandledrejection', 'unhandledrejection: ' + ((e.reason && e.reason.message) || e.reason));
   });
 </script>
 <!-- 下面这个占位符会被 Emscripten 换成当前目标的 loader（index.js / probe.js），

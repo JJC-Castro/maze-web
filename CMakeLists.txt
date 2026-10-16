@@ -140,6 +140,12 @@ if(EMSCRIPTEN)
         "--shell-file"   "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html"
     )
 
+    # 改 shell.html 也要让它重新链接一次：emcc 是在**链接**阶段把 shell 注进
+    # index.html 的，CMake 默认不知道这层依赖 —— 只改 shell.html 时 ninja 认为
+    # 无事可做，本地预览就还是旧页面（榜单页/指针锁定那些前端改动会被"吃掉"）。
+    set_property(TARGET maze APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
+
     # index.html 里引的是同目录的 config.js，构建完把它放到产物旁边
     add_custom_command(TARGET maze POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
