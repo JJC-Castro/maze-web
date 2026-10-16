@@ -172,14 +172,23 @@ namespace lb
     // ---- 榜单拉取完成回调 ----
     void OnBoardDone(emscripten_fetch_t* fetch)
     {
+        // ⚠ 提取顺序很重要：emscripten_fetch_close() 会把 fetch 结构本身 free 掉，
+        //   close 之后再碰 fetch（包括 fetch->userData）读到的就是被覆盖过的内存，
+        //   拿它当指针去 delete 就是 free(野指针) —— wasm 里表现为
+        //   "memory access out of bounds"，也就是反复点「记录排名」会崩的原因
+        //   （第一次进只拉不合并、第二次才合并绘制，所以要点几次才撞上）。
+        //   所以：先把要用的东西全部拷出来，最后一步才 close。
         const std::string body(fetch->data, (size_t)fetch->numBytes);
-        const std::string key = (fetch->userData != nullptr)
-            ? *(const std::string*)fetch->userData : std::string();
-        char url[256] = { 0 };
-        std::snprintf(url, sizeof(url), "%s", fetch->url);
-        emscripten_fetch_close(fetch);
-        delete (std::string*)fetch->userData;      // 回调里收尾，别让 key 常驻内存
-        fetch->userData = nullptr;
+
+        std::string key;
+        if (fetch->userData != nullptr)
+        {
+            key = *(const std::string*)fetch->userData;
+            delete (std::string*)fetch->userData;   // 回调里收尾，别让 key 常驻内存
+            fetch->userData = nullptr;
+        }
+
+        emscripten_fetch_close(fetch);              // 之后不能再碰 fetch
 
         // key 形如 "easy|score"
         const size_t bar = key.find('|');
