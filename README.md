@@ -484,32 +484,52 @@ name|difficulty|board|mode|score|elapsed
 
 ## 五、部署
 
-### 5.1 后端（Cloudflare Worker + D1）
+### 5.1 当前实际部署（2026-10-16 已完成）
+
+| 角色 | 跑在哪 | 地址 |
+|---|---|---|
+| 游戏本体（静态） | GitHub Pages，由 `.github/workflows/build-web.yml` 构建 | https://jjc-castro.github.io/maze-web/ |
+| 排行榜后端 | Cloudflare Pages Functions（源码 `server/pages/`） | https://maze-api.pages.dev/api |
+
+后端全仓库只有一份实现：`server/worker.js`（验签 / 限流 / D1 读写都在里面）。
+`server/pages/functions/api/[[path]].js` 只做一件事 —— 把 `/api/*` 交给它的 `fetch()`，
+所以改校验规则只改 `worker.js` 一处，两种部署方式同时生效。
+
+> ⚠️ **为什么后端挂在 Pages 而不是 Worker 的 `*.workers.dev`**
+> 在国内实测（2026-10-16）：`*.workers.dev` 已被 DNS 污染，解析到 Facebook 的
+> `199.59.149.203` / `2a03:2880:f102:183:face:b00c:0:25de`，TCP 443 直接超时，
+> 浏览器根本连不上；而 `*.pages.dev` 解析到的是真 CF 边缘 IP
+> （`104.18.21.135` / `2606:4700::6812:1487`，实测走香港节点），国内可直连。
+> 所以**不要把 `apiBase` 指回 `workers.dev`**。
+
+### 5.2 重新部署后端（Cloudflare Pages）
+
+```powershell
+# 首次：D1 建库 + 建表（database_id 已经填进 server/wrangler.toml 和 server/pages/wrangler.toml）
+cd server
+wrangler login
+wrangler d1 create maze-leaderboard
+wrangler d1 execute maze-leaderboard --file=schema.sql --remote
+
+# 每次改完后端：重新部署 Pages 项目
+cd server/pages
+wrangler pages project create maze-api --production-branch main   # 只有第一次要跑
+wrangler pages deploy public --project-name maze-api
+```
+
+部署完把 `web/config.js` 的 `apiBase` 指向 `https://<项目>.pages.dev/api`（改它不用重编 wasm），
+提交后 CI 会重新部署站点。
+
+### 5.3 后端备选一：Cloudflare Worker（`workers.dev`）
 
 ```powershell
 cd server
-npm install -g wrangler
-wrangler login
-wrangler d1 create maze-leaderboard          # 把输出的 database_id 填进 wrangler.toml
-wrangler d1 execute maze-leaderboard --file=schema.sql --remote
-wrangler deploy
+wrangler deploy        # 产物：https://maze-leaderboard.<账号>.workers.dev
 ```
 
-### 5.2 前端（Cloudflare Pages）
+代码完全一样，但如上文所说**域名在国内不可达**，只当备用 / 换域名前的占位。
 
-```
-构建命令：  （留空，本地构建好上传）
-输出目录：  build/web
-```
-
-构建产物里 `web/config.js` 会被打进 `build/web`，把 `apiBase` 指向 Worker 域名即可。
-更省事的做法是在 Pages 里配一条路由 `/api/*` → Worker，这样 `apiBase` 留空就行（同域）。
-
-> 顺带一提：**如果你哪天想用 pthreads**，`tools/serve.py` 已经把
-> `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` 两个头加好了；
-> 线上要在 `web/_headers` 里补同样两条。
-
-### 5.3 自建（不想用 Cloudflare）
+### 5.4 后端备选二：自建（不想用 Cloudflare）
 
 ```powershell
 python server/local_server.py --port 8787

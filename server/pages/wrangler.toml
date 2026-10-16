@@ -1,0 +1,22 @@
+# ===========================================================================
+#  wrangler.toml —— Cloudflare Pages 版后端配置
+#
+#  为什么不直接用 Worker 的 *.workers.dev：
+#    国内 DNS 把 *.workers.dev 污染到了 Facebook 的 IP（199.59.149.203 /
+#    2a03:2880:... ），浏览器根本连不上；而 *.pages.dev 解析到的是真 CF
+#    边缘 IP（104.18.x / 2606:4700::），国内可直连。
+#
+#  部署（在 server/pages 目录下跑）：
+#    wrangler pages project create maze-api --production-branch main
+#    wrangler pages deploy public --project-name maze-api
+#
+#  后端实现只有一份：functions/api/[[path]].js 直接 import ../../worker.js
+# ===========================================================================
+name = "maze-api"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "maze-leaderboard"
+database_id = "9fd86a35-3bab-4327-98a3-a04aebe644ef"

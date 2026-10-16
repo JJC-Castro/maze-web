@@ -18,7 +18,7 @@ compatibility_date = "2025-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "maze-leaderboard"
-database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+database_id = "9fd86a35-3bab-4327-98a3-a04aebe644ef"
 
 [observability]
 enabled = true
