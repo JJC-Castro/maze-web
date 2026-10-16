@@ -402,27 +402,35 @@ bool Account::SubmitRecord(const ScoreRecord& rec)
     return true;
 }
 
-std::vector<ScoreRecord> Account::RankByDifficulty(
-    Difficulty d,
-    RankBoard board,
-    int maxCount)
+namespace
 {
+    // 排名核心：本地 log.csv + 云端缓存合并排序。
+    // fetchNetwork = false 时只并已有缓存（云端数据刚回来、原地重排用）。
+    std::vector<ScoreRecord> RankCore(
+        Difficulty d,
+        RankBoard board,
+        int maxCount,
+        bool fetchNetwork)
+    {
     std::vector<ScoreRecord> out;
 
 #ifdef MAZE_WEB
     // Web：本地 log.csv 只在这台机器上，真正的「全网」在服务端。
-    //   · RequestBoard() 是异步的 —— 这一帧拿不到，但会缓存下来，
-    //     所以"第一次进这一页看本地、第二次进就看全网"是预期行为（不卡主线程）。
+    //   · RequestBoard() 是异步的，这一帧拿不到；数据到达后 lb::ConsumeFreshBoard()
+    //     抬旗，排名页下一帧自动重排显示（见 main.cpp），不用退出去再点第二次。
     //   · TakeCached() 把已经缓存到的云端成绩并进来，跟着本地榜一起排序。
     //     同名同模式的两条会由下面的 InsertBest 去重，留更好的那条。
-    lb::RequestBoard(d, board, maxCount > 0 ? maxCount : RANK_LIST_MAX);
+    if (fetchNetwork)
+    {
+        lb::RequestBoard(d, board, maxCount > 0 ? maxCount : RANK_LIST_MAX);
+    }
     lb::TakeCached(d, board, out);
 #endif
 
     bool (*better)(const ScoreRecord&, const ScoreRecord&) =
         (board == RankBoard::Time) ? BetterByTime : BetterByScore;
 
-    for (const ScoreRecord& r : LoadAll())
+    for (const ScoreRecord& r : Account::LoadAll())
     {
         if (r.difficulty != d) continue;
         if (r.board != board && r.board != RankBoard::Legacy) continue;
@@ -437,4 +445,22 @@ std::vector<ScoreRecord> Account::RankByDifficulty(
     }
 
     return out;
+    }
+}   // namespace
+
+std::vector<ScoreRecord> Account::RankByDifficulty(
+    Difficulty d,
+    RankBoard board,
+    int maxCount)
+{
+    return RankCore(d, board, maxCount, true);
+}
+
+// 云端数据到达后原地重排用：不重新发请求，避免"重排 -> 再请求 -> 再重排"自激
+std::vector<ScoreRecord> Account::RankByDifficultyCached(
+    Difficulty d,
+    RankBoard board,
+    int maxCount)
+{
+    return RankCore(d, board, maxCount, false);
 }

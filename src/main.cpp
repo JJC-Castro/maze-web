@@ -1781,17 +1781,22 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
             else TraceLog(LOG_WARNING, "EnsureGlyphs: font reload failed");
         };
 
-    const auto LoadRank = [&](int tab)
+    // fetchNetwork = false：只并已有缓存，不再发请求（云端数据到达后原地重排用）
+    const auto LoadRank = [&](int tab, bool fetchNetwork = true)
         {
             rankTab = tab;
             const RankBoard board = (rankView == RankView::Time)
                 ? RankBoard::Time
                 : RankBoard::Score;
-            rankRows = Account::RankByDifficulty(
-                static_cast<Difficulty>(tab),
-                board,
-                RANK_LIST_MAX
-            );
+            rankRows = fetchNetwork
+                ? Account::RankByDifficulty(
+                    static_cast<Difficulty>(tab),
+                    board,
+                    RANK_LIST_MAX)
+                : Account::RankByDifficultyCached(
+                    static_cast<Difficulty>(tab),
+                    board,
+                    RANK_LIST_MAX);
 
             std::string names;
             for (const ScoreRecord& r : rankRows) names += r.name;
@@ -2699,6 +2704,10 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
 
         case GameState::RANKING:
         {
+            // 云端榜是异步拉的：数据一到就原地重排一次并重绘，
+            // 这样进这一页点一次就能看到全网成绩（不重新发请求，不会自激）。
+            if (lb::ConsumeFreshBoard()) LoadRank(rankTab, false);
+
             const RankLayout layout = MakeRankLayout();
             const Vector2 mouse = GetMousePosition();
 

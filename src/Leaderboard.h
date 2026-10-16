@@ -34,6 +34,11 @@ namespace lb
     // 把已经缓存的云端成绩追加到 out（去重 / 排序交给调用方的 InsertBest）
     void TakeCached(Difficulty d, RankBoard board, std::vector<ScoreRecord>& out);
 
+    // 云端榜数据是否刚回来（取一次就清掉）。
+    // 排名页每帧问一次：为真就重排一遍 —— 这样点进「记录排名」后云端数据一到就自动显示，
+    // 不用退出去再点第二次。桌面版恒为 false。
+    bool ConsumeFreshBoard();
+
     // 给 UI 用的一句话状态（"云端 OK" / "离线" / "桌面版不支持"...）
     const char* Status();
 

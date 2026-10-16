@@ -38,6 +38,7 @@ namespace lb
         std::mutex gMutex;
         std::map<std::string, std::vector<ScoreRecord>> gCache;
         std::map<std::string, bool> gInflight;
+        bool        gBoardFresh = false;        // 有新榜单数据到达，等 UI 取走
 
         std::string BoardTag(RankBoard b)
         {
@@ -109,6 +110,7 @@ namespace lb
     void Submit(const ScoreRecord&) {}
     void RequestBoard(Difficulty, RankBoard, int) {}
     void TakeCached(Difficulty, RankBoard, std::vector<ScoreRecord>&) {}
+    bool ConsumeFreshBoard() { return false; }      // 桌面版没有全网榜
     const char* Status() { return "local"; }
     void Poll() {}
 
@@ -227,6 +229,7 @@ namespace lb
                 std::lock_guard<std::mutex> lock(gMutex);
                 gCache[key] = rows;
                 gInflight[key] = false;
+                gBoardFresh = true;             // 抬旗：让排名页下一帧自动重排
             }
             char buf[64];
             std::snprintf(buf, sizeof(buf), "online (%d)", (int)rows.size());
@@ -342,6 +345,14 @@ namespace lb
         const auto it = gCache.find(CacheKey(d, board));
         if (it == gCache.end()) return;
         out.insert(out.end(), it->second.begin(), it->second.end());
+    }
+
+    bool ConsumeFreshBoard()
+    {
+        std::lock_guard<std::mutex> lock(gMutex);
+        const bool fresh = gBoardFresh;
+        gBoardFresh = false;
+        return fresh;
     }
 
     const char* Status() { return gStatus.c_str(); }

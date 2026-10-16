@@ -44,4 +44,12 @@ namespace Account
         RankBoard board,
         int maxCount
     );
+
+    // 同 RankByDifficulty，但不发起新的网络请求（只并已有缓存）。
+    // 云端数据回来时用它原地重排一次，避免"重新请求 -> 又回数据 -> 又重排"的死循环。
+    std::vector<ScoreRecord> RankByDifficultyCached(
+        Difficulty d,
+        RankBoard board,
+        int maxCount
+    );
 }
