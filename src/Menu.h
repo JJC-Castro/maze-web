@@ -24,6 +24,8 @@ enum class MenuAction
 
     DIFF_HOLY,         // 神圣：地狱的墙 + 玻璃墙 / 可破墙
     DIFF_HUNGER,       // 饥饿：神圣 + 饱腹值（能量条换成饱腹值）
+    GUIDE_PREV,        // 玩法说明：上一页
+    GUIDE_NEXT,        // 玩法说明：下一页
     DIFF_ROGUE,        // 肉鸽：5 层连打 + 层间选增益
     OPEN_LOAD_MENU,
    
