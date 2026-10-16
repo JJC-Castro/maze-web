@@ -1857,215 +1857,377 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
         };
 
     // =======================================================================
-    //  玩法说明的正文
-    //  · 难度明细：直接调 DifficultyInfoText() —— 改 Config.h 的数字，说明书自动跟着变
-    //  · 肉鸽增益：直接遍历 BUFF_*_FIRST..LAST + BuffName / BuffDesc —— 加新增益自动出现
-    //  · 手写的只有 流程 / 操作 / 模式 / 管理员 / 仓库 这几段
-    //  正文按“中文算 2 个单位”折行，再按 kGuideRows 行分页；'\f' 是强制分页符。
+    //  玩法说明：两级菜单（目录 → 章节内翻页）
+    //  · 难度明细直接调 DifficultyInfoText()、增益一览直接遍历 BUFF_*_FIRST..LAST
+    //    所以改了 Config.h 的数字、或加了新增益，说明书内容会自动跟着变
+    //  · 正文写成 GBK 字面量，先整段转成 UTF-8、再在 UTF-8 上折行：
+    //    直接在 GBK 上按字节折行会把汉字从中间劈开，半个汉字转码时就变成 '?'
     // =======================================================================
-    std::vector<std::string> guidePages;
-    int guidePage = 0;
-
-    const auto ShowGuidePage = [&]()
-        {
-            if (guidePages.empty()) return;
-            const int n = (int)guidePages.size();
-            guidePage = ((guidePage % n) + n) % n;          // 负数也能绕回来
-            helpMenu.SetSubtitle(guidePages[guidePage]);
-            helpMenu.SetHint("玩法说明 " + std::to_string(guidePage + 1) + " / " + std::to_string(n) +
-                             " 页    上下键选 上一页 / 下一页   Enter 确认   ESC 返回");
-        };
-
+    struct GuideChapter
     {
-        std::string t;
-        const std::string pageBreak = "\f\n";
-        const auto section = [&](const std::string& head, const std::string& body)
-            {
-                t += "== " + head + " ==\n" + body + "\n";
-            };
+        std::string title;                  // 目录里的条目名（GBK）
+        std::string summary;                // 光标停在目录项上时的预览（GBK）
+        std::vector<std::string> pages;     // 折好行、分好页的正文（UTF-8）
+    };
 
-        section("怎么玩：完整流程",
-            "主菜单 → 开始游戏 → 登录 / 跳过 → 选模式 → 选难度 → 开局\n"
-            "通关：走到绿色出口并站上去（出口在小地图 / 雷达上有标记）\n"
-            "通关后弹结算菜单：继续游戏 / 重新开始 / 记录排名 / 返回主菜单\n"
-            "登录过用户名才写进全网榜；「跳过」= 游客，成绩只留在本机\n"
-            "中途死亡、或退回主菜单：本局不记录，也不进排行榜\n"
-            "「记录排名」在主菜单 / 暂停 / 结算里都有，7 个难度各排一张榜\n"
-            "排名规则：先比分数，同分比用时；网页版会把全网的成绩一起排进来\n"
-            "宝物是可选加分项：金 = 加分，蓝 = 加攻击次数，红 = 回血\n"
-            "地雷踩到扣 5 点血并致盲 1.5 秒（跳过去可以不触发）\n"
-            "暂停菜单可存档到 3 个槽位；肉鸽不支持存档，一局从第一层打到第五层");
-        t += pageBreak;
+    std::vector<GuideChapter> guideChapters;
+    int guideLevel = 0;                     // 0 = 章节目录，1 = 章节内页
+    int guideChapter = 0;
+    int guidePage = 0;
+    int guidePreview = -1;                  // 目录里上一次预览过的条目，换了才重设副标题
 
-        section("操作速查",
-            "W A S D      相对视角的前后左右移动\n"
-            "Shift        奔跑（饥饿模式冲刺会双倍消耗饱腹值）\n"
-            "Space        跳跃（奶龙模式有独立的跳跃动画）\n"
-            "鼠标移动     转动视角（Tab 解锁 / 重新锁定鼠标）\n"
-            "鼠标左键     射击（奶龙模式会先自动索敌，再开火）\n"
-            "F / V        奶龙大笑 / 切换第一、第三人称（奶龙模式）\n"
-            "ESC          暂停 / 返回上一层；菜单里上下键或 W S 选择，Enter 确认\n"
-            "管理员模式：长按空格起飞，Z / X 升降，Shift 加速");
-        t += pageBreak;
-
-        section("两种模式：正常 / 奶龙",
-            "正常模式\n"
-            "  第一人称原版玩法，视角锁死第一人称\n"
-            "  射击：准星对准敌人，左键开火，命中走射线判定\n"
-            "奶龙模式\n"
-            "  主角换成奶龙模型，有走 / 跑 / 跳 / 大笑四套动画\n"
-            "  第三人称跟随相机，按 V 切回第一人称，滚轮调远近\n"
-            "  射击：屏幕内、有视线、最近的敌人会自动锁定，左键开火\n"
-            "两种模式都能玩全部 7 个难度；排行榜里两种模式同榜比较");
-        t += pageBreak;
-
-        section("难度总览",
-            "简单 / 普通 / 困难：基础三档，地图越大怪越多就越难\n"
-            "地狱：在困难的基础上加光源限制，只看得清 5 米内，配合大笑可以短暂全亮\n"
-            "神圣：地狱 + 玻璃墙 / 可破墙，路上有看不见的墙，也有一发子弹才能打碎的墙\n"
-            "饥饿：神圣 + 饱腹值，能量条换成红色饱腹条，饿到底会致盲并掉血\n"
-            "肉鸽：5 层连打 + 层间选增益，详见后面几页\n"
-            "每个难度右边都有个 ? 图标，点开能看到这一档的具体数字");
-        t += pageBreak;
-
-        // ---- 7 个难度明细：全部由 DifficultyInfoText() 生成 ----
-        const Difficulty guideDiffs[7] = { Difficulty::EASY, Difficulty::NORMAL, Difficulty::HARD,
-                                           Difficulty::HELL, Difficulty::HOLY, Difficulty::HUNGER,
-                                           Difficulty::ROGUE };
-        for (int i = 0; i < 7; ++i)
+    // ---- 折行 + 分页：把一段 GBK 正文切成若干页 UTF-8 文本（'\f' = 手动分页）----
+    const auto GuidePagesOf = [](const std::string& gbkBody) -> std::vector<std::string>
         {
-            const std::string body = DifficultyInfoText(guideDiffs[i]);
-            std::string indented;
-            for (size_t pos = 0; pos < body.size(); )
+            const std::string body = Utf8(gbkBody);
+            const int kUnits = 74;      // 一行最多 74 个单位：汉字算 2、ASCII 算 1
+            const int kRows = 9;        // 一页最多 9 行（再多会把下面几个菜单项挤出屏幕）
+
+            std::vector<std::string> lines;
+            for (size_t pos = 0; pos <= body.size(); )
             {
                 const size_t nl = body.find('\n', pos);
-                const std::string line = body.substr(pos, (nl == std::string::npos) ? std::string::npos : nl - pos);
-                if (!line.empty()) indented += "  " + line + "\n";
-                if (nl == std::string::npos) break;
+                const bool last = (nl == std::string::npos);
+                const std::string raw = body.substr(pos, last ? std::string::npos : nl - pos);
+
+                if (raw == "\f") lines.push_back("\f");         // 手动分页
+                else
+                {
+                    std::string seg;
+                    int units = 0;
+                    for (size_t k = 0; k < raw.size(); )
+                    {
+                        const unsigned char c = (unsigned char)raw[k];
+                        const size_t len = (c < 0x80) ? 1 : (((c & 0xE0) == 0xC0) ? 2 : (((c & 0xF0) == 0xE0) ? 3 : 4));
+                        const int u = (len == 1) ? 1 : 2;
+                        if (units + u > kUnits && !seg.empty())
+                        {
+                            lines.push_back(seg);
+                            seg.clear();
+                            units = 0;
+                        }
+                        seg += raw.substr(k, len);
+                        units += u;
+                        k += len;
+                    }
+                    lines.push_back(seg);
+                }
+                if (last) break;
                 pos = nl + 1;
             }
-            t += std::string("== 难度明细：") + DifficultyName(guideDiffs[i]) + " ==\n" + indented + pageBreak;
-        }
 
-        section("肉鸽增益是怎么给的",
-            "每层开场弹一次选择窗：本层有几个候选、能勾几个都由层数决定\n"
-            "（每层开场选增益：3 选 2 → 5 选 3 → 5 选 3 → 8 选 4 → 10 选 5）\n"
-            "一般增益免费；稀有增益要花 1 个宝物换；一局只有 1 次刷新机会\n"
-            "已选过的增益不会再出现；选择只在本局生效，退出即清空\n"
-            "第 3、4 层必出一个特殊增益；第 5 层必出一个稀有并白送 1 个宝物");
-        t += pageBreak;
-
-        // ---- 增益一览：全部由 BuffName / BuffDesc 生成 ----
-        const auto buffList = [&](const std::string& head, int first, int last)
-            {
-                t += "== " + head + " ==\n";
-                for (int i = first; i <= last; ++i)
+            std::vector<std::string> pages, page;
+            const auto flush = [&]()
                 {
-                    const Buff b = (Buff)i;
-                    t += std::string(BuffName(b)) + "  " + BuffDesc(b) + "\n";
-                }
-                t += pageBreak;
-            };
-        buffList("肉鸽增益：一般（免费，概率最高）", BUFF_GENERAL_FIRST, BUFF_GENERAL_LAST);
-        buffList("肉鸽增益：特殊（出现率是一般的 1/10）", BUFF_SPECIAL_FIRST, BUFF_SPECIAL_LAST);
-        buffList("肉鸽增益：稀有（出现率是一般的 1/20，要用 1 个宝物买）", BUFF_RARE_FIRST, BUFF_RARE_LAST);
-
-        section("管理员模式（肉鸽模式专属）",
-            "入口：暂停菜单右下角的「管理员」按钮 → 输入密码 → 回车\n"
-            "密码不写在这份说明里，问项目作者要（代码里改一个 #define 就能换）\n"
-            "开启后：血量 / 宝物 / 弹药 / 饱腹值全都不减，相当于无限\n"
-            "长按空格起飞，Z / X 升降，能飞起来看完整张地图\n"
-            "暂停菜单里可以直接勾选想要的肉鸽增益（勾上立刻生效）\n"
-            "暂停菜单里可以直接跳到下一层 / 回到上一层\n"
-            "还有 RL 机器人（自动通关 / 训练桥），只在简单 / 普通 / 困难 + 第一人称可用\n"
-            "管理员模式下打出来的成绩不进排行榜");
-        t += pageBreak;
-
-        section("代码仓库 / 在线试玩",
-            "桌面版（C++ / raylib / Visual Studio）\n"
-            "  https://gitee.com/fidel-castro/maze_game\n"
-            "网页版（Emscripten + 全网排行榜后端）\n"
-            "  https://github.com/JJC-Castro/maze-web\n"
-            "在线试玩（免安装，浏览器打开就能玩）\n"
-            "  https://jjc-castro.github.io/maze-web/\n"
-            "桌面版仓库里 final-version 是汇总分支；奶龙模式 / RL 实验在各自分支上");
-
-        // (1) 折行：中文按 2 个单位、ASCII 按 1 个单位，一行最多 kGuideUnits 个单位
-        const int kGuideUnits = 74;      // ≈ 37 个汉字：窗口宽 1280 px、正文字号 30 px
-        const int kGuideRows  = 10;      // 一页最多 10 行（再多会把三个菜单项挤出屏幕）
-
-        std::vector<std::string> lines;
-        for (size_t pos = 0; pos <= t.size(); )
-        {
-            const size_t nl = t.find('\n', pos);
-            const bool last = (nl == std::string::npos);
-            const std::string raw = t.substr(pos, last ? std::string::npos : nl - pos);
-
-            if (raw == "\f")
-            {
-                lines.push_back("\f");
-            }
-            else
-            {
-                std::string seg;
-                int units = 0;
-                for (size_t k = 0; k < raw.size(); )
-                {
-                    const unsigned char c = (unsigned char)raw[k];
-                    const size_t len = (c < 0x80) ? 1 : (((c & 0xE0) == 0xC0) ? 2 : (((c & 0xF0) == 0xE0) ? 3 : 4));
-                    const int u = (len == 1) ? 1 : 2;
-                    if (units + u > kGuideUnits && !seg.empty())
-                    {
-                        lines.push_back(seg);
-                        seg.clear();
-                        units = 0;
-                    }
-                    seg += raw.substr(k, len);
-                    units += u;
-                    k += len;
-                }
-                lines.push_back(seg);
-            }
-            if (last) break;
-            pos = nl + 1;
-        }
-
-        // (2) 分页：遇到 '\f' 强制翻页，或者攒够 kGuideRows 行
-        std::vector<std::string> page;
-        for (const std::string& line : lines)
-        {
-            if (line == "\f" || (int)page.size() >= kGuideRows)
-            {
-                if (!page.empty())
-                {
+                    if (page.empty()) return;
                     std::string joined;
                     for (size_t i = 0; i < page.size(); ++i)
                     {
                         if (i > 0) joined += "\n";
                         joined += page[i];
                     }
-                    guidePages.push_back(joined);
+                    pages.push_back(joined);
                     page.clear();
-                }
-                if (line == "\f") continue;
-            }
-            page.push_back(line);
-        }
-        if (!page.empty())
-        {
-            std::string joined;
-            for (size_t i = 0; i < page.size(); ++i)
+                };
+            for (const std::string& line : lines)
             {
-                if (i > 0) joined += "\n";
-                joined += page[i];
+                if (line == "\f") { flush(); continue; }
+                if ((int)page.size() >= kRows) flush();
+                page.push_back(line);
             }
-            guidePages.push_back(joined);
-        }
-        if (guidePages.empty()) guidePages.push_back("（说明书生成失败）");
+            flush();
+            if (pages.empty()) pages.push_back(Utf8("（这一章暂时没有内容）"));
+            return pages;
+        };
 
-        // (3) 说明书里可能有界面别处没出现过的字（箭头之类）：一次性补进字体，免得显示成问号
-        EnsureGlyphs(Utf8(t));
-        ShowGuidePage();
+    // ---- 目录页：副标题实时显示光标所在章节的简介 ----
+    const auto UpdateGuidePreview = [&]()
+        {
+            if (guideChapters.empty()) return;
+            const int sel = helpMenu.GetSelected();
+            if (sel == guidePreview || sel < 0 || sel >= (int)guideChapters.size()) return;
+            guidePreview = sel;
+            const GuideChapter& c = guideChapters[sel];
+            helpMenu.SetSubtitle(c.summary + "    共 " + std::to_string((int)c.pages.size()) + " 页");
+        };
+
+    const auto ShowGuideIndex = [&]()
+        {
+            guideLevel = 0;
+            std::vector<MenuItem> entries;
+            for (const GuideChapter& c : guideChapters)
+                entries.push_back(MenuItem{ c.title, MenuAction::GUIDE_OPEN });
+            entries.push_back(MenuItem{ "返回主菜单", MenuAction::BACK });
+
+            helpMenu.SetTitle("玩法说明");
+            helpMenu.SetItems(entries);
+            guidePreview = -1;
+            helpMenu.SetHint("共 " + std::to_string((int)guideChapters.size()) +
+                             " 章    上下键 / 鼠标选择    Enter 阅读    ESC 返回");
+            UpdateGuidePreview();
+        };
+
+    // ---- 章节内页：正文挂在副标题上，一次一页 ----
+    const auto ShowGuideChapter = [&]()
+        {
+            if (guideChapters.empty()) return;
+            guideLevel = 1;
+            if (guideChapter < 0) guideChapter = 0;
+            if (guideChapter >= (int)guideChapters.size()) guideChapter = (int)guideChapters.size() - 1;
+
+            const GuideChapter& c = guideChapters[guideChapter];
+            const int n = (int)c.pages.size();
+            guidePage = ((guidePage % n) + n) % n;              // 负数也能绕回来
+
+            helpMenu.SetTitle(c.title);
+            helpMenu.SetItems({ MenuItem{ "上一页", MenuAction::GUIDE_PREV },
+                                MenuItem{ "下一页", MenuAction::GUIDE_NEXT },
+                                MenuItem{ "返回目录", MenuAction::BACK } });
+            helpMenu.SetSubtitleUtf8(c.pages[guidePage]);
+            helpMenu.SetHint("第 " + std::to_string(guidePage + 1) + " / " + std::to_string(n) +
+                             " 页    左右键 / 滚轮 翻页    Enter 确认    ESC 返回目录");
+        };
+
+    {
+        std::string body;           // 一章的正文攒在这里，交给 addChapter 折行分页后清空
+        const auto addChapter = [&](const std::string& gbkTitle, const std::string& gbkSummary)
+            {
+                GuideChapter c;
+                c.title = gbkTitle;
+                c.summary = gbkSummary;
+                c.pages = GuidePagesOf(body);
+                guideChapters.push_back(c);
+                body.clear();
+            };
+        const std::string pageBreak = "\f\n";
+        const Difficulty guideDiffs[7] = { Difficulty::EASY, Difficulty::NORMAL, Difficulty::HARD,
+                                           Difficulty::HELL, Difficulty::HOLY, Difficulty::HUNGER,
+                                           Difficulty::ROGUE };
+
+        // ---- 1. 完整流程与操作 ----
+        body =
+            "开局怎么走\n"
+            "  主菜单 →「开始游戏」→ 登录 / 跳过 → 选模式 → 选难度 → 开局\n"
+            "  登录：输入用户名 + Enter，成绩会写进全网排行榜（同名只留最好的一次）\n"
+            "  跳过：以「游客」身份玩，成绩只留在本机，一样能正常通关\n"
+            "\n"
+            "怎么算通关\n"
+            "  在地图里找到绿色的出口格，走进去就算通关（雷达 / 小地图上有标记）\n"
+            "  宝物和怪物都不是必须清的，但宝物能加分，也能补血补弹\n"
+            "\n"
+            "什么情况下会被记录\n"
+            "  通关：弹出结算菜单（重新开始 / 记录排名 / 返回主菜单），成绩写进 log.csv\n"
+            "  死亡：一样弹结算菜单，但成绩不记录\n"
+            "  中途退回主菜单：本局作废，什么都不写\n"
+            "  肉鸽模式要 5 层全部通关，才记录总分与总时间\n" + pageBreak +
+            "成绩怎么看\n"
+            "  主菜单 / 暂停菜单 / 结算菜单里都有一栏「记录排名」\n"
+            "  7 个难度各排一张榜，先比分数，同分再比用时（快的靠前）\n"
+            "  网页版会把全网玩家的成绩一起排进来；桌面版只记录本机\n"
+            "  场次结束后想再来一局，结算菜单里直接选「重新开始」最快\n" + pageBreak +
+            "游戏中的键鼠\n"
+            "  W A S D       相对视角的前后左右移动\n"
+            "  Shift         奔跑（跑得快，但饥饿 / 肉鸽里会双倍消耗饱腹值）\n"
+            "  Space         跳跃（可以跳过地雷）\n"
+            "  鼠标移动      转动视角；Tab 解锁 / 重新锁定鼠标\n"
+            "  鼠标左键      射击（奶龙模式会先自动索敌，再开火）\n"
+            "  F             奶龙大笑（地狱 / 神圣里大笑期间会短暂全亮）\n"
+            "  V             奶龙模式切换第一 / 第三人称\n"
+            "  鼠标滚轮      奶龙模式调整相机远近\n"
+            "  ESC           暂停 / 返回上一层\n" + pageBreak +
+            "菜单里的操作\n"
+            "  W S 或 上下键 或 鼠标   选择条目\n"
+            "  Enter / 空格            确认\n"
+            "  ESC                     返回上一层\n"
+            "  玩法说明里：左右键 或 滚轮 翻页，ESC 回到目录\n"
+            "\n"
+            "管理员模式额外多出来的操作（见第 7 章）\n"
+            "  长按空格起飞，Z / X 控制升降，Shift 加速\n" + pageBreak;
+        addChapter("1. 完整流程与操作", "从主菜单到开局，通关 / 死亡 / 退出分别怎么记录。");
+
+        // ---- 2. 模式 ----
+        body =
+            "两种模式都能玩全部 7 个难度，排行榜不分模式，同榜比较。\n"
+            "流程上：登录 / 跳过后先选模式，再选难度。\n" + pageBreak +
+            "正常模式（第一人称）\n"
+            "  原版第一人称迷宫，视角锁死第一人称\n"
+            "  射击：准星对准敌人，左键开火，靠射线判定有没有命中\n"
+            "  敌人分巡逻怪和追击怪，追击怪会一路追着你跑，靠脚步声判断位置\n" + pageBreak +
+            "奶龙模式（第三人称）\n"
+            "  主角换成奶龙模型，有 走 / 跑 / 跳 / 大笑 四套动画\n"
+            "  第三人称跟随相机：按 V 切回第一人称，滚轮调远近\n"
+            "  移动方向相对相机，奶龙可以 360 度转向\n"
+            "  射击：屏幕内、有视线、离得最近的敌人会自动锁定，左键开火\n" + pageBreak;
+        addChapter("2. 模式：正常 / 奶龙", "两种模式各自怎么玩、怎么操控、有什么不一样。");
+
+        // ---- 3. 难度一览与明细 ----
+        body =
+            "7 档难度，一档比一档加料：\n"
+            "  简单 / 普通 / 困难：基础三档，地图越大、怪越多、血越少就越难\n"
+            "  地狱：困难 + 光源限制，只看得清身边 5 米，大笑可以短暂全亮\n"
+            "  神圣：地狱 + 特殊墙体（看不见的玻璃墙 + 一发子弹能打碎的红墙）\n"
+            "  饥饿：神圣 + 饱腹值，能量条换成红色饱腹条\n"
+            "  肉鸽：5 层连打，层与层之间选增益\n"
+            "\n"
+            "难度菜单每一项右边都有个 ?，点开就是这一档的具体数字。\n"
+            "下面几页是各档明细 —— 数字直接读 Config.h，改了数字这里也会跟着变。\n" + pageBreak;
+        for (int i = 0; i < 7; ++i)
+        {
+            body += std::string("== ") + DifficultyName(guideDiffs[i]) + " ==\n";
+            const std::string info = DifficultyInfoText(guideDiffs[i]);
+            for (size_t p = 0; p < info.size(); )
+            {
+                const size_t nl = info.find('\n', p);
+                const std::string line = info.substr(p, (nl == std::string::npos) ? std::string::npos : nl - p);
+                if (!line.empty()) body += "  " + line + "\n";
+                if (nl == std::string::npos) break;
+                p = nl + 1;
+            }
+            body += pageBreak;
+        }
+        addChapter("3. 难度一览与明细", "7 档难度各自加了什么料，以及每一档的具体数字。");
+
+        // ---- 4. 宝物 / 地雷 / 计分 ----
+        body =
+            "宝物（走到跟前自动捡）\n"
+            "  金：加分        蓝：+1 攻击次数        红：回血\n"
+            "  饥饿 / 肉鸽里，吃到任意宝物、弹药包、血包都会 +5 饱腹值\n" + pageBreak +
+            "地雷\n"
+            "  踩到扣 5 点血，并致盲：屏幕全黑一段时间（音效还在）\n"
+            "  跳起来可以跳过去不触发\n"
+            "  肉鸽里能刷到「地雷无致盲」的增益\n" + pageBreak +
+            "射击\n"
+            "  左键打出一发光球，命中怪物即击杀\n"
+            "  攻击次数有限（蓝色宝物能补），打空了就只能跑\n"
+            "  肉鸽里能刷到「子弹伤害更高」的增益，一发一个\n" + pageBreak +
+            "计分与排名\n"
+            "  通关本身有基础分，宝物、击杀、剩余血量都会折算进去\n"
+            "  排行榜先比分数，同分再比用时，快的靠前\n"
+            "  网页版成绩上传到全网榜，所有玩家一起排；桌面版只记本机\n" + pageBreak;
+        addChapter("4. 宝物 / 地雷 / 计分", "宝物三种颜色分别干什么、地雷怎么躲、分数怎么算。");
+
+        // ---- 5. 饥饿模式 ----
+        body =
+            "在神圣的基础上多了一条饱腹值：原来的能量条换成红色饱腹条。\n"
+            "\n"
+            "初始状态\n"
+            "  血量 30，饱腹值 10（也是上限）\n"
+            "  平时 4 秒掉 1 点饱腹；冲刺时 2 秒掉 1 点（加速 = 双倍消耗）\n"
+            "  吃到任意宝物 / 弹药包 / 血包：+5 饱腹值\n"
+            "\n"
+            "饿到底会怎样\n"
+            "  饱腹归零先致盲（窗口全黑）一段时间，之后开始持续掉血\n"
+            "  掉血速度：平时 4 秒 1 点，冲刺时 2 秒 1 点\n"
+            "  所以冲刺是把双刃剑：跑得快，但饿得快、掉血也快\n" + pageBreak +
+            "和神圣比多给的东西\n"
+            "  宝物 / 弹药包 / 血包的数量都是神圣模式的两倍\n"
+            "  加速不消耗能量、只消耗饱腹值，也就是说可以无限加速\n"
+            "  玻璃墙、可破墙、光源限制这些和神圣完全一致\n" + pageBreak;
+        addChapter("5. 饥饿模式（饱腹值）", "神圣 + 饱腹值：怎么掉、饿了会怎样、如何补回来。");
+
+        // ---- 6. 肉鸽模式 ----
+        body =
+            "肉鸽 = 5 层连打 + 层间选增益，是这个游戏加料最多的模式。\n"
+            "\n"
+            "五层难度依次是\n"
+            "  1 简单 → 2 困难 → 3 地狱 → 4 神圣 → 5 神圣（墙全透明，只剩可破墙）\n"
+            "\n"
+            "开局状态\n"
+            "  血量 100 / 弹药满 / 饱腹值 30\n"
+            "  每层通关后，血量、弹药、宝物数、饱腹值、分数全部继承到下一层\n"
+            "  饱腹值规则和饥饿模式一样：吃不饱会致盲，然后掉血\n"
+            "\n"
+            "结算\n"
+            "  5 层全部通关才写 log.csv：总分 = 5 层之和，总时间 = 5 层用时之和\n"
+            "  中途死亡或者退出，本局不记录\n" + pageBreak +
+            "每层开场选增益\n"
+            "  第 1 层 3 选 2，第 2 层 5 选 3，第 3 层 5 选 3，第 4 层 8 选 4，第 5 层 10 选 5\n"
+            "  一般增益免费；稀有增益要花 1 个宝物买\n"
+            "  一局只有 1 次刷新机会，用完就没了\n"
+            "  已经选过的增益不会再出现；增益只在本局生效，退回主菜单就清空\n"
+            "  第 3、4 层必定刷出一个特殊增益；第 5 层必定刷出一个稀有增益并白送 1 个宝物\n" + pageBreak +
+            "下面几页是全部增益清单（直接读代码里的增益表，有新增益这里会自动出现）\n" + pageBreak;
+
+        const auto buffList = [&](const std::string& head, int first, int last)
+            {
+                body += "== " + head + " ==\n";
+                for (int i = first; i <= last; ++i)
+                {
+                    const Buff b = (Buff)i;
+                    body += std::string(BuffName(b)) + "\n  " + BuffDesc(b) + "\n";
+                }
+                body += pageBreak;
+            };
+        buffList("肉鸽增益：一般（免费，概率最高）", BUFF_GENERAL_FIRST, BUFF_GENERAL_LAST);
+        buffList("肉鸽增益：特殊（出现率是一般的 1/10）", BUFF_SPECIAL_FIRST, BUFF_SPECIAL_LAST);
+        buffList("肉鸽增益：稀有（出现率是一般的 1/20，要花 1 个宝物买）", BUFF_RARE_FIRST, BUFF_RARE_LAST);
+        addChapter("6. 肉鸽模式（5 层 + 增益）", "5 层连打的规则、层间怎么选增益、全部增益一览。");
+
+        // ---- 7. 管理员模式 ----
+        body =
+            "肉鸽模式专属的调试 / 娱乐模式。\n"
+            "\n"
+            "怎么进\n"
+            "  肉鸽里按 ESC 暂停 → 点右下角的「管理员」按钮 → 输入密码 → 回车\n"
+            "  密码不写在这份说明里，问项目作者要（代码里改一个 #define 就能换）\n"
+            "\n"
+            "进去之后\n"
+            "  血量 / 宝物 / 弹药 / 饱腹值全都不减，等于无限\n"
+            "  走、跑、跳和正常肉鸽完全一样，只是不会死\n"
+            "  暂停菜单里可以随便勾选想要的增益，勾上立刻生效\n"
+            "  暂停菜单里可以直接跳到下一层 / 回到上一层\n"
+            "  管理员模式下打出来的成绩不进排行榜\n" + pageBreak +
+            "飞行（管理员专属）\n"
+            "  长按空格起飞，起来之后 Z / X 控制升降，Shift 加速\n"
+            "  能飞到墙上方，飞起来看整张地图\n"
+            "  落地后自动恢复正常状态\n" + pageBreak +
+            "RL 机器人（管理员菜单里的入口）\n"
+            "  自动通关：机器人自己走迷宫，你在旁边看\n"
+            "  训练桥：把这个游戏当成环境喂给 Python 训练（给做强化学习用的）\n"
+            "  只在 简单 / 普通 / 困难 + 第一人称 下可用，奶龙模式不行\n" + pageBreak;
+        addChapter("7. 管理员模式（肉鸽专属）", "暂停菜单右下角进去的调试模式：无限资源 + 飞行。");
+
+        // ---- 8. 存档 / 排行榜 ----
+        body =
+            "存档\n"
+            "  游戏中按 ESC 暂停 →「保存到一 / 二 / 三」，最多存 3 个槽位\n"
+            "  主菜单 →「读取存档」读回来：难度、血量、弹药、分数、用时一起存\n"
+            "  肉鸽模式不支持存档 —— 一局就要从第一层一路打到第五层\n" + pageBreak +
+            "排行榜\n"
+            "  主菜单 / 暂停 / 结算里都有「记录排名」\n"
+            "  7 个难度各一张榜，分「最高分榜」和「最快用时榜」两种看法\n"
+            "  排名规则：先按分数从高到低，同分再按用时从短到长\n"
+            "  桌面版记录写在程序目录的 log.csv（UTF-8 带 BOM，Excel 直接打开）\n"
+            "  网页版会上传到云端，全网玩家一起排；同一个人同一个难度只留最好的一次\n" + pageBreak;
+        addChapter("8. 存档 / 排行榜 / 记录", "存档槽位怎么用，排行榜怎么排、记录写在哪。");
+
+        // ---- 9. 仓库 / 在线试玩 ----
+        body =
+            "桌面版（C++ / raylib / Visual Studio）\n"
+            "  https://gitee.com/fidel-castro/maze_game\n"
+            "\n"
+            "网页版（Emscripten + 全网排行榜后端）\n"
+            "  https://github.com/JJC-Castro/maze-web\n"
+            "\n"
+            "在线试玩（免安装，浏览器直接打开）\n"
+            "  https://jjc-castro.github.io/maze-web/\n" + pageBreak +
+            "关于分支\n"
+            "  桌面版仓库的 final-version 是汇总分支\n"
+            "  奶龙模式、RL 实验在各自的开发分支上\n"
+            "有问题或者想提建议：直接提 issue，或者找作者本人\n" + pageBreak;
+        addChapter("9. 代码仓库与在线试玩", "两个仓库地址、在线试玩链接，以及分支说明。");
+
+        // 说明书里可能有界面别处没出现过的字：一次性补进字体，免得显示成问号
+        std::string glyphSource;
+        for (const GuideChapter& c : guideChapters)
+        {
+            glyphSource += Utf8(c.title) + Utf8(c.summary);
+            for (const std::string& pageText : c.pages) glyphSource += pageText;
+        }
+        glyphSource += Utf8("共 章 上下键 鼠标选择 Enter 阅读 ESC 返回 第 页 左右键 滚轮 翻页 确认 返回目录 上一页 下一页 返回主菜单 玩法说明 本章 简介");
+        EnsureGlyphs(glyphSource);
+
+        ShowGuideIndex();
     }
 
     GameState state = GameState::MENU;
@@ -2864,6 +3026,23 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
         case GameState::HELP:
             action = helpMenu.Update();
             if (IsKeyPressed(KEY_ESCAPE)) action = MenuAction::BACK;
+
+            if (guideLevel == 0)
+            {
+                UpdateGuidePreview();        // 目录页：副标题跟着光标走，选中哪章就先看简介
+            }
+            else if (action == MenuAction::NONE)
+            {
+                // 章节内：左右键 / 滚轮也能翻页，不用每次都去点「下一页」
+                const float wheel = GetMouseWheelMove();
+                const bool nextPage = IsKeyPressed(KEY_RIGHT) || wheel < -0.01f;
+                const bool prevPage = IsKeyPressed(KEY_LEFT) || wheel > 0.01f;
+                if (nextPage || prevPage)
+                {
+                    guidePage += nextPage ? 1 : -1;
+                    ShowGuideChapter();
+                }
+            }
             break;
 
         case GameState::DIFFICULTY:
@@ -4231,20 +4410,30 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
             break;
         }
 
-        case MenuAction::GUIDE_PREV:                 // 玩法说明：上一页（第一页再往前就绕到最后一页）
+        case MenuAction::GUIDE_OPEN:                 // 玩法说明：打开目录里光标停的那一章
+        {
+            const int sel = helpMenu.GetSelected();
+            if (sel >= 0 && sel < (int)guideChapters.size())
+            {
+                guideChapter = sel;
+                guidePage = 0;
+                ShowGuideChapter();
+            }
+            break;
+        }
+
+        case MenuAction::GUIDE_PREV:                 // 玩法说明：上一页（第一页再往前绕到最后一页）
             --guidePage;
-            ShowGuidePage();
+            ShowGuideChapter();
             break;
 
         case MenuAction::GUIDE_NEXT:                 // 玩法说明：下一页
             ++guidePage;
-            ShowGuidePage();
+            ShowGuideChapter();
             break;
 
         case MenuAction::HELP:
-            guidePage = 0;
-            helpMenu.Reset();
-            ShowGuidePage();
+            ShowGuideIndex();
             state = GameState::HELP;
             break;
 
@@ -4439,6 +4628,12 @@ bool rlEnemyCountReady = false;  // 敌人线程 tick 过一次没有（快照�
             break;
 
         case MenuAction::BACK:
+            // 玩法说明：章节内按返回先回目录，在目录里再按才回主菜单
+            if (state == GameState::HELP && guideLevel == 1)
+            {
+                ShowGuideIndex();
+                break;
+            }
             // 排名页 / 难度详情是"叠加"打开的，先返回上一层
             if (state == GameState::RANKING)
             {

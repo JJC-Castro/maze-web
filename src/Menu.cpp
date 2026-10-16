@@ -43,6 +43,7 @@ void Menu::Init(const std::string& gbkTitle, std::vector<MenuItem> menuItems, Me
 
 void Menu::SetTitle(const std::string& gbkTitle)   { title = Utf8(gbkTitle); }
 void Menu::SetSubtitle(const std::string& gbkText) { subtitle = Utf8(gbkText); }
+void Menu::SetSubtitleUtf8(const std::string& utf8Text) { subtitle = utf8Text; }
 void Menu::SetHint(const std::string& gbkText)     { hint = Utf8(gbkText); }
 
 void Menu::SetItems(std::vector<MenuItem> menuItems)
@@ -76,35 +77,42 @@ void Menu::Layout()
     const float hintH  = hint.empty()     ? 0.0f : LineH(hintSize) + 10.0f;
     const float contentH = titleH + subH + listH + hintH;
 
-    // 行高 / 行距 / 内边距走这三个可变量：DIALOG 一屏放不下时会收紧它们。
+    // 行高 / 行距 / 内边距走这三个可变量：一屏放不下时会自动收紧它们。
+    // 管理员暂停菜单最坏有 10 项、玩法说明目录有 10 项，默认字号 + 行距会把内容
+    // 撑到 800 px 以上，而窗口只有 720 px —— 下半截直接画到屏幕外。
+    // 放不下就一档档收紧：先压行高（到 字号+4 为止），再压行距，最后压内边距。
     float itemHFit   = itemH;
     float gapFit     = (float)UI_ITEM_GAP;
     float padYFit    = (float)UI_ITEM_PADY;
     float contentFit = contentH;
 
-    if (style == MenuStyle::PAGE)
-    {
-        panel = Rectangle{ 0.0f, 0.0f, sw, sh };
-    }
-    else
-    {
-        const float panelW = UI_PANEL_WIDTH;
-        const float availH = sh - 2.0f * kDialogMargin;
-        // 管理员暂停菜单最坏有 10 项，默认字号 + 行距会把面板撑到约 880 px，
-        // 而窗口只有 720 px —— 下半截直接画到屏幕外。放不下就一档档收紧：
-        // 先压行高（到 字号+4 为止），再压行距，最后压内边距。
-        for (int guard = 0; guard < 96; ++guard)
+    const float availH = sh - 2.0f * kDialogMargin;
+    const auto UsedHeight = [&]()
         {
             const float listFit = (n > 0)
                 ? ((float)n * itemHFit + (float)(n - 1) * gapFit) : 0.0f;
             contentFit = titleH + subH + listFit + hintH;
-            if (contentFit + 4.0f * padYFit <= availH) break;
-            if (itemHFit > (float)textSize + 4.0f)
-                itemHFit = fmaxf((float)textSize + 4.0f, itemHFit - 4.0f);
-            else if (gapFit > 2.0f) gapFit -= 1.0f;
-            else if (padYFit > 2.0f) padYFit -= 1.0f;
-            else break;
-        }
+            return (style == MenuStyle::PAGE) ? contentFit : (contentFit + 4.0f * padYFit);
+        };
+
+    for (int guard = 0; guard < 128 && UsedHeight() > availH; ++guard)
+    {
+        if (itemHFit > (float)textSize + 4.0f)
+            itemHFit = fmaxf((float)textSize + 4.0f, itemHFit - 4.0f);
+        else if (gapFit > 2.0f) gapFit -= 1.0f;
+        else if (padYFit > 2.0f) padYFit -= 1.0f;
+        else break;
+    }
+
+    if (style == MenuStyle::PAGE)
+    {
+        panel = Rectangle{ 0.0f, 0.0f, sw, sh };
+        // 行高可能被压小过，contentFit 要按收紧后的值重算，否则整块会偏下
+        UsedHeight();
+    }
+    else
+    {
+        const float panelW = UI_PANEL_WIDTH;
         const float panelH = contentFit + 4.0f * padYFit;
         panel = Rectangle{ (sw - panelW) * 0.5f,
                            fmaxf(kDialogMargin, (sh - panelH) * 0.5f),

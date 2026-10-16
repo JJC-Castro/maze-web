@@ -26,6 +26,7 @@ enum class MenuAction
     DIFF_HUNGER,       // 饥饿：神圣 + 饱腹值（能量条换成饱腹值）
     GUIDE_PREV,        // 玩法说明：上一页
     GUIDE_NEXT,        // 玩法说明：下一页
+    GUIDE_OPEN,        // 玩法说明：打开目录里选中的那一章
     DIFF_ROGUE,        // 肉鸽：5 层连打 + 层间选增益
     OPEN_LOAD_MENU,
    
@@ -76,6 +77,7 @@ public:
     void Init(const std::string& gbkTitle, std::vector<MenuItem> menuItems, MenuStyle style = MenuStyle::PAGE);
     void SetTitle(const std::string& gbkTitle);
     void SetSubtitle(const std::string& gbkText);   // 支持 '\n' 换行
+    void SetSubtitleUtf8(const std::string& utf8Text);  // 正文本来就是 UTF-8（说明书）时用它，别再转一次码
     void SetHint(const std::string& gbkText);       // 底部提示
     void SetFont(Font f) { font = f; }
     void SetItems(std::vector<MenuItem> menuItems); // 重建条目（GBK 传入），选中项归零
